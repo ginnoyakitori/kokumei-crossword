@@ -17,18 +17,15 @@
         .container { max-width: 900px; margin: auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.08); }
         h1 { text-align: center; color: #2c3e50; margin-bottom: 25px; }
 
-        /* 共通コントロール */
         .global-controls { background: #f0f3f5; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: flex; justify-content: center; align-items: center; gap: 15px; }
         select { padding: 8px 12px; border-radius: 5px; border: 1px solid #ccc; font-size: 14px; }
 
-        /* タブUI */
         .tabs { display: flex; border-bottom: 2px solid #ddd; margin-bottom: 25px; }
         .tab-btn { flex: 1; padding: 12px; background: none; border: none; font-size: 16px; cursor: pointer; color: #7f8c8d; transition: 0.3s; border-bottom: 3px solid transparent; }
         .tab-btn.active { color: var(--primary-color); border-bottom: 3px solid var(--primary-color); font-weight: bold; }
         .tab-content { display: none; }
         .tab-content.active { display: block; }
 
-        /* 操作パネル */
         .controls { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; justify-content: center; align-items: center; }
         input[type="number"] { width: 55px; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
         button { padding: 10px 20px; border-radius: 5px; border: none; cursor: pointer; font-weight: bold; color: white; transition: 0.2s; }
@@ -37,7 +34,6 @@
         .btn-reset { background-color: #95a5a6; }
         button:hover { opacity: 0.85; transform: translateY(-1px); }
 
-        /* グリッド共通表示 */
         .grid-wrapper { overflow-x: auto; padding: 10px 0; }
         .grid { display: grid; gap: 2px; background-color: #34495e; padding: 3px; margin: 0 auto; width: max-content; border-radius: 4px; }
         .cell { width: var(--cell-size); height: var(--cell-size); background-color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 18px; text-transform: uppercase; user-select: none; }
@@ -45,7 +41,6 @@
         .cell.interactive { cursor: pointer; transition: background 0.1s; }
         .cell.interactive:hover { background-color: #ecf0f1; }
 
-        /* 解法表示用 */
         .solution-container { border-top: 2px dashed #bdc3c7; margin-top: 40px; padding-top: 20px; }
         .solution-item { margin-bottom: 50px; text-align: center; }
         .solution-label { display: block; margin-bottom: 12px; font-weight: bold; color: var(--primary-color); font-size: 1.1em; }
@@ -94,7 +89,7 @@
         <div class="controls">
             <label>行: <input type="number" id="sol-rows" value="5" min="2" max="15" onchange="initSolverGrid()"></label>
             <label>列: <input type="number" id="sol-cols" value="5" min="2" max="15" onchange="initSolverGrid()"></label>
-            <button class="btn-sol" onclick="runSolver()">すべての解を表示</button>
+            <button class="btn-sol" onclick="runSolver()">解を探索</button>
             <button class="btn-reset" onclick="initSolverGrid()">全クリア</button>
         </div>
         <div id="sol-warning" class="warning"></div>
@@ -112,7 +107,6 @@
 <script>
     let solverPattern = [];
 
-    // タブ切り替え
     function switchTab(tabId) {
         document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
         document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
@@ -125,7 +119,6 @@
         }
     }
 
-    // 共通グリッド描画関数
     function renderGrid(containerId, gridData) {
         const container = document.getElementById(containerId);
         container.innerHTML = '';
@@ -150,7 +143,7 @@
         }
     }
 
-    // --- モード1: ジェネレーター用 ---
+    // --- モード1: ジェネレーター ---
     async function runGenerator() {
         const rows = document.getElementById('gen-rows').value;
         const cols = document.getElementById('gen-cols').value;
@@ -176,18 +169,17 @@
         }
     }
 
-    // --- モード2: ソルバー用 ---
+    // --- モード2: ソルバー ---
     function initSolverGrid() {
         const rows = parseInt(document.getElementById('sol-rows').value);
         const cols = parseInt(document.getElementById('sol-cols').value);
         
-        // 画面リセット
         document.getElementById('solutions-list').style.display = 'none';
         document.getElementById('solutions-list').innerHTML = '';
         document.getElementById('sol-warning').textContent = '';
         document.getElementById('sol-info').textContent = '';
         
-        // 初期状態はすべて 0 (黒マス)
+        // 最初はすべて黒マス (0)
         solverPattern = Array.from({ length: rows }, () => Array(cols).fill(0)); 
         drawSolverPatternGrid();
     }
@@ -206,13 +198,9 @@
                 if (solverPattern[r][c] === 0) cellDiv.classList.add('black');
                 
                 cellDiv.onclick = () => {
-                    // 0と1を反転
                     solverPattern[r][c] = solverPattern[r][c] === 0 ? 1 : 0;
-                    if (solverPattern[r][c] === 0) {
-                        cellDiv.classList.add('black');
-                    } else {
-                        cellDiv.classList.remove('black');
-                    }
+                    if (solverPattern[r][c] === 0) cellDiv.classList.add('black');
+                    else cellDiv.classList.remove('black');
                 };
                 container.appendChild(cellDiv);
             }
@@ -224,7 +212,7 @@
         const solListContainer = document.getElementById('solutions-list');
         
         document.getElementById('sol-warning').textContent = '';
-        document.getElementById('sol-info').textContent = '🔍 全単語リストから最適な組み合わせを探索中...';
+        document.getElementById('sol-info').textContent = '🔍 探索中...';
         solListContainer.innerHTML = '';
         solListContainer.style.display = 'none';
 
@@ -240,22 +228,30 @@
                 document.getElementById('sol-warning').textContent = data.warning;
                 document.getElementById('sol-info').textContent = '';
             } else if (data.solutions && data.solutions.length > 0) {
-                document.getElementById('sol-info').textContent = `✅ ${data.solutions.length} 件の解が見つかりました`;
+                const totalCount = data.solutions.length;
+                const displayCount = Math.min(totalCount, 10);
+                
+                let message = `✅ ${totalCount} 件の解が見つかりました`;
+                if (totalCount > 10) {
+                    message += `（最初の ${displayCount} 件を表示します）`;
+                }
+                document.getElementById('sol-info').textContent = message;
                 solListContainer.style.display = 'block';
 
-                data.solutions.forEach((sol, index) => {
+                // 最初の10件のみループ
+                for (let i = 0; i < displayCount; i++) {
+                    const sol = data.solutions[i];
                     const itemDiv = document.createElement('div');
                     itemDiv.className = 'solution-item';
                     
                     const label = document.createElement('span');
                     label.className = 'solution-label';
-                    label.textContent = `解決パターン #${index + 1}`;
+                    label.textContent = `解決パターン #${i + 1}`;
                     itemDiv.appendChild(label);
 
                     const gridDiv = document.createElement('div');
                     gridDiv.className = 'grid';
-                    const cols = sol[0].length;
-                    gridDiv.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+                    gridDiv.style.gridTemplateColumns = `repeat(${sol[0].length}, 1fr)`;
 
                     for (let r = 0; r < sol.length; r++) {
                         for (let c = 0; c < sol[0].length; c++) {
@@ -271,9 +267,8 @@
                     }
                     itemDiv.appendChild(gridDiv);
                     solListContainer.appendChild(itemDiv);
-                });
+                }
                 
-                // 結果までスムーズにスクロール
                 setTimeout(() => {
                     solListContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 }, 100);
@@ -283,7 +278,6 @@
         }
     }
 
-    // 初期化
     window.onload = () => {
         initSolverGrid();
     };
