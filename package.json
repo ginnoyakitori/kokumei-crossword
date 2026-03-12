@@ -2,7 +2,7 @@
   "name": "kokumei-crossword",
   "version": "1.0.0",
   "scripts": {
-    "start": "node server.js"
+    "start": "node generator.js"
   },
   "dependencies": {
     "express": "^4.18.2"
