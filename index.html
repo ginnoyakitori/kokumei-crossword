@@ -1,0 +1,139 @@
+﻿<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>クロスワードジェネレーター</title>
+    <style>
+        body { font-family: sans-serif; margin: 20px; }
+        .input-group { margin-bottom: 20px; }
+        .input-group label { display: block; margin-bottom: 5px; font-weight: bold;}
+        .input-group input, .input-group select { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+        table {
+            border-collapse: collapse;
+            margin-top: 20px;
+            font-family: monospace;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
+        }
+        td {
+            border: 1px solid #000; 
+            padding: 5px; 
+            text-align: center;
+            width: 30px;
+            height: 30px;
+            font-size: 16px;
+            background-color: white;
+            color: #333;
+        }
+        .black-cell {
+            background-color: #333;
+            color: white;
+            font-size: 10px;
+            line-height: 10px;
+            padding: 0;
+            cursor: default;
+        }
+        .words-list {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ccc;
+        }
+    </style>
+</head>
+<body>
+    <h1>クロスワード自動生成</h1>
+
+    <div class="input-group">
+        <label for="list-name">使用する単語リスト:</label>
+        <select id="list-name">
+            <option value="pokemon">ポケモン (pokemon.txt)</option>
+            <option value="countries">国名 (countries.txt)</option>
+            <option value="capitals">首都 (capitals.txt)</option>
+            <option value="countries_capitals">国名・首都名 (countries_capitals.txt)</option>
+        </select>
+    </div>
+
+    <div class="input-group">
+        <label for="rows">縦のマス目の数 (5-20):</label>
+        <input type="number" id="rows" value="10" min="5" max="20">
+    </div>
+    <div class="input-group">
+        <label for="cols">横のマス目の数 (5-20):</label>
+        <input type="number" id="cols" value="10" min="5" max="20">
+    </div>
+    
+    <button id="generate-button">クロスワードを生成</button>
+    
+    <h2 id="result-title" style="display: none;">生成結果</h2>
+    <div id="output">
+        </div>
+    
+    <script>
+        document.getElementById('generate-button').addEventListener('click', async () => {
+            const rows = parseInt(document.getElementById('rows').value);
+            const cols = parseInt(document.getElementById('cols').value);
+            const listName = document.getElementById('list-name').value;
+            
+            const outputElement = document.getElementById('output');
+            const resultTitle = document.getElementById('result-title');
+            
+            outputElement.innerHTML = '生成中... (数秒かかる場合があります)';
+            resultTitle.style.display = 'none';
+
+            if (rows < 5 || rows > 20 || cols < 5 || cols > 20) {
+                 outputElement.innerHTML = '<p style="color: red;">縦横のマス目の数は5から20の間で指定してください。</p>';
+                return;
+            }
+
+            try {
+                const response = await fetch('/generate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ rows, cols, listName })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'サーバーエラーが発生しました。');
+                }
+
+                const data = await response.json();
+                const { grid, placedWords, score, listUsed } = data;
+                
+                resultTitle.style.display = 'block';
+                
+                let html = `<h3>使用リスト: ${listUsed} | スコア (配置された単語数): ${score}</h3>`;
+
+                // 1. グリッドの表示
+                html += '<table>';
+                grid.forEach(row => {
+                    html += '<tr>';
+                    row.forEach(cell => {
+                        const cellClass = cell === '⬛︎' ? 'black-cell' : '';
+                        html += `<td class="${cellClass}">${cell === '⬛︎' ? '' : cell}</td>`;
+                    });
+                    html += '</tr>';
+                });
+                html += '</table>';
+
+                // 2. 配置された単語リストの表示
+                html += '<div class="words-list">';
+                html += '<h4>配置された単語</h4>';
+                html += '<ul>';
+                placedWords.forEach(p => {
+                    html += `<li>${p.word} (${p.direction === 'horizontal' ? '横' : '縦'} - R${p.r}C${p.c})</li>`;
+                });
+                html += '</ul>';
+                html += '</div>';
+
+                outputElement.innerHTML = html;
+
+            } catch (error) {
+                console.error('生成に失敗しました:', error);
+                outputElement.innerHTML = `<p style="color: red;">エラーが発生しました: ${error.message}</p>`;
+            }
+        });
+    </script>
+</body>
+</html>

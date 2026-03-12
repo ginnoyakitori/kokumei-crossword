@@ -1,0 +1,158 @@
+﻿/* style.css */
+
+/* 全体のレイアウト */
+body {
+    font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif;
+    background-color: #f4f7f6;
+    color: #333;
+    line-height: 1.6;
+    margin: 0;
+    padding: 30px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+h1 {
+    color: #2c3e50;
+    border-bottom: 3px solid #3498db;
+    padding-bottom: 10px;
+    margin-bottom: 30px;
+}
+
+/* 入力エリアのスタイル */
+.input-container {
+    background: white;
+    padding: 25px;
+    border-radius: 12px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+    width: 100%;
+    max-width: 500px;
+    margin-bottom: 30px;
+}
+
+.input-group {
+    margin-bottom: 15px;
+}
+
+.input-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: bold;
+    font-size: 0.9rem;
+    color: #555;
+}
+
+.input-group input, 
+.input-group select {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 1rem;
+    box-sizing: border-box; /* paddingを含めた幅計算 */
+    transition: border-color 0.3s;
+}
+
+.input-group input:focus, 
+.input-group select:focus {
+    outline: none;
+    border-color: #3498db;
+}
+
+/* ボタンのスタイル */
+#generate-button {
+    width: 100%;
+    padding: 12px;
+    background-color: #3498db;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 1.1rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.2s, transform 0.1s;
+}
+
+#generate-button:hover {
+    background-color: #2980b9;
+}
+
+#generate-button:active {
+    transform: scale(0.98);
+}
+
+/* テーブル（クロスワード）のスタイル */
+table {
+    border-collapse: collapse;
+    margin: 25px 0;
+    background-color: #000; /* 枠線を黒く見せるため */
+    box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+}
+
+td {
+    border: 1px solid #333;
+    width: 35px;
+    height: 35px;
+    text-align: center;
+    vertical-align: middle;
+    font-size: 18px;
+    font-weight: bold;
+    background-color: white;
+    text-transform: uppercase;
+}
+
+/* 黒マスのスタイル */
+.black-cell {
+    background-color: #2c3e50;
+    background-image: radial-gradient(#34495e 20%, transparent 20%);
+    background-size: 4px 4px; /* 微細なドットパターン */
+}
+
+/* 配置された単語リスト */
+.words-list {
+    background: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    border-left: 5px solid #3498db;
+    width: 100%;
+    max-width: 600px;
+    margin-top: 20px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+}
+
+.words-list h4 {
+    margin-top: 0;
+    color: #2c3e50;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 8px;
+}
+
+.words-list ul {
+    list-style: none;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
+}
+
+.words-list li {
+    font-size: 0.9rem;
+    padding: 4px 0;
+    color: #666;
+}
+
+.words-list li::before {
+    content: "•";
+    color: #3498db;
+    font-weight: bold;
+    display: inline-block; 
+    width: 1em;
+}
+
+/* エラー・読み込み中メッセージ */
+#output p {
+    font-weight: bold;
+    padding: 15px;
+    border-radius: 6px;
+}
