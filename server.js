@@ -40,7 +40,8 @@ const filesMap = {
     'pokemon': ['pokemon.txt'],
     'countries': ['countries.txt'],
     'capitals': ['capitals.txt'],
-    'countries_capitals': ['countries.txt', 'capitals.txt']
+    'countries_capitals': ['countries.txt', 'capitals.txt'],
+    'all': ['pokemon.txt', 'countries.txt', 'capitals.txt'] // 全辞書用を追加しておくと便利です
 };
 
 // ジェネレーター用 (シャッフル済み配列)
@@ -519,7 +520,8 @@ function solveCrossword(pattern, optimizedData, listUsedName) {
     }
 
     function backtrack(currentGrid) {
-        if (solutions.length >= 10) return; // UI向けに解を10個で打ち切り
+        // ★修正点: 10個打ち切りの制限を外し、最大1000個まで探索・保持するように変更しました。
+        if (solutions.length >= 1000) return; 
 
         const slotIndex = selectNextSlot(currentGrid);
         if (slotIndex === -1) {
@@ -619,7 +621,6 @@ app.post('/generate', (req, res) => {
 });
 
 // パターン解法API
-// server.js (抜粋: /solve エンドポイント部分)
 app.post('/solve', (req, res) => {
     const { pattern, listName } = req.body;
     if (!pattern || !Array.isArray(pattern)) {
