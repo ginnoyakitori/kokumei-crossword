@@ -619,6 +619,7 @@ app.post('/generate', (req, res) => {
 });
 
 // パターン解法API
+// server.js (抜粋: /solve エンドポイント部分)
 app.post('/solve', (req, res) => {
     const { pattern, listName } = req.body;
     if (!pattern || !Array.isArray(pattern)) {
@@ -628,16 +629,16 @@ app.post('/solve', (req, res) => {
     const listUsedName = listName in wordsByLengthSolver ? listName : 'pokemon';
     const optimizedData = { wordsByLength: wordsByLengthSolver, intersectionIndex };
     
-    console.log(`パターン解法開始: リスト=${listUsedName}, サイズ=${pattern.length}x${pattern[0].length}`);
+    // バックトラックで解を探索
     const solutions = solveCrossword(pattern, optimizedData, listUsedName);
     
     if (solutions.length === 0) {
-        return res.json({ solutions: [], warning: "このパターンと単語リストで解が見つかりませんでした。" });
+        return res.json({ solutions: [], warning: "解が見つかりませんでした。パターンや辞書を変えてみてください。" });
     }
 
-    // クライアント表示用にフォーマット（空白を '⬛︎' に変換）
+    // すべての解をフォーマットして返す
     const formattedSolutions = solutions.map(sol => 
-        sol.map(row => row.map(cell => cell === '' ? '⬛︎' : cell))
+        sol.map(row => row.map(cell => cell === '' ? ' ' : cell))
     );
 
     res.json({ solutions: formattedSolutions, listUsed: listUsedName });
