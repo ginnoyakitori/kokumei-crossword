@@ -454,102 +454,152 @@ function getWordSlots(pattern) {
     }
     return wordSlots;
 }
-
 function solveCrossword(pattern, optimizedData, listUsedName) {
-    const { wordsByLength, intersectionIndex } = optimizedData;
-    const wordSlots = getWordSlots(pattern);
-    const numSlots = wordSlots.length;
 
-    const assignments = Array(numSlots).fill(null);
-    const usedWordsSet = new Set();
-    const solutions = [];
+    const { wordsByLength, intersectionIndex } = optimizedData;
 
-    function filterCandidates(slot, currentGrid, lengthMap) {
-        const allCandidates = lengthMap[slot.length] || [];
-        return allCandidates.filter(word => {
-            if (usedWordsSet.has(word)) return false;
-            if (slot.direction === 'horizontal') {
-                for (let i = 0; i < slot.length; i++) {
-                    const cell = currentGrid[slot.position.r][slot.position.c + i];
-                    if (cell !== '' && cell !== word[i]) return false;
-                }
-            } else {
-                for (let i = 0; i < slot.length; i++) {
-                    const cell = currentGrid[slot.position.r + i][slot.position.c];
-                    if (cell !== '' && cell !== word[i]) return false;
-                }
-            }
-            return true;
-        });
-    }
+    const wordSlots = getWordSlots(pattern);
+    const numSlots = wordSlots.length;
 
-    function selectNextSlot(currentGrid) {
-        let bestIndex = -1;
-        let minCandidates = Infinity;
-        for (let i = 0; i < numSlots; i++) {
-            if (assignments[i] === null) {
-                const slot = wordSlots[i];
-                const candidates = filterCandidates(slot, currentGrid, wordsByLength[listUsedName]);
-                if (candidates.length < minCandidates) {
-                    minCandidates = candidates.length;
-                    bestIndex = i;
-                }
-            }
-        }
-        return bestIndex;
-    }
+    const assignments = Array(numSlots).fill(null);
+    const usedWordsSet = new Set();
 
-    function getSortedCandidates(slot, currentGrid) {
-        const allCandidates = wordsByLength[listUsedName][slot.length] || [];
-        return allCandidates.filter(word => {
-            if (usedWordsSet.has(word)) return false;
-            if (slot.direction === 'horizontal') {
-                for (let i = 0; i < slot.length; i++) {
-                    const cell = currentGrid[slot.position.r][slot.position.c + i];
-                    if (cell !== '' && cell !== word[i]) return false;
-                }
-            } else { 
-                for (let i = 0; i < slot.length; i++) {
-                    const cell = currentGrid[slot.position.r + i][slot.position.c];
-                    if (cell !== '' && cell !== word[i]) return false;
-                }
-            }
-            return true;
-        });
-    }
+    const solutions = [];
 
-    function backtrack(currentGrid) {
-        
-        const slotIndex = selectNextSlot(currentGrid);
-        if (slotIndex === -1) {
-            solutions.push(currentGrid.map(row => [...row]));
-            return;
-        }
+    const rows = pattern.length;
+    const cols = pattern[0].length;
 
-        const slot = wordSlots[slotIndex];
-        const candidates = getSortedCandidates(slot, currentGrid);
+    const grid = Array.from({ length: rows }, () => Array(cols).fill(""));
 
-        for (const word of candidates) {
-            let tempGrid = currentGrid.map(row => [...row]);
-            if (slot.direction === 'horizontal') {
-                for (let i = 0; i < slot.length; i++) tempGrid[slot.position.r][slot.position.c + i] = word[i];
-            } else { 
-                for (let i = 0; i < slot.length; i++) tempGrid[slot.position.r + i][slot.position.c] = word[i];
-            }
+    function getCandidates(slot) {
 
-            assignments[slotIndex] = word;
-            usedWordsSet.add(word);
-            backtrack(tempGrid);
-            assignments[slotIndex] = null;
-            usedWordsSet.delete(word);
-        }
-    }
+        const candidates = [];
+        const lengthWords = wordsByLength[listUsedName][slot.length] || [];
 
-    const initialGrid = Array.from({ length: pattern.length }, () => Array(pattern[0].length).fill(''));
-    backtrack(initialGrid);
-    return solutions;
+        for (const word of lengthWords) {
+
+            if (usedWordsSet.has(word)) continue;
+
+            let ok = true;
+
+            if (slot.direction === "horizontal") {
+                for (let i = 0; i < slot.length; i++) {
+                    const cell = grid[slot.position.r][slot.position.c + i];
+                    if (cell !== "" && cell !== word[i]) {
+                        ok = false;
+                        break;
+                    }
+                }
+            } else {
+                for (let i = 0; i < slot.length; i++) {
+                    const cell = grid[slot.position.r + i][slot.position.c];
+                    if (cell !== "" && cell !== word[i]) {
+                        ok = false;
+                        break;
+                    }
+                }
+            }
+
+            if (ok) candidates.push(word);
+        }
+
+        return candidates;
+    }
+
+    function selectSlotMCV() {
+
+        let best = -1;
+        let bestCount = Infinity;
+
+        for (let i = 0; i < numSlots; i++) {
+
+            if (assignments[i] !== null) continue;
+
+            const slot = wordSlots[i];
+            const count = getCandidates(slot).length;
+
+            if (count < bestCount) {
+                bestCount = count;
+                best = i;
+            }
+        }
+
+        return best;
+    }
+
+    function placeWord(slot, word) {
+
+        const changes = [];
+
+        if (slot.direction === "horizontal") {
+
+            for (let i = 0; i < slot.length; i++) {
+
+                const r = slot.position.r;
+                const c = slot.position.c + i;
+
+                if (grid[r][c] === "") {
+                    grid[r][c] = word[i];
+                    changes.push([r, c]);
+                }
+            }
+
+        } else {
+
+            for (let i = 0; i < slot.length; i++) {
+
+                const r = slot.position.r + i;
+                const c = slot.position.c;
+
+                if (grid[r][c] === "") {
+                    grid[r][c] = word[i];
+                    changes.push([r, c]);
+                }
+            }
+        }
+
+        return changes;
+    }
+
+    function undoChanges(changes) {
+        for (const [r, c] of changes) {
+            grid[r][c] = "";
+        }
+    }
+
+    function backtrack() {
+
+        const slotIndex = selectSlotMCV();
+
+        if (slotIndex === -1) {
+
+            solutions.push(grid.map(row => [...row]));
+            return;
+        }
+
+        const slot = wordSlots[slotIndex];
+        const candidates = getCandidates(slot);
+
+        for (const word of candidates) {
+
+            const changes = placeWord(slot, word);
+
+            assignments[slotIndex] = word;
+            usedWordsSet.add(word);
+
+            backtrack();
+
+            assignments[slotIndex] = null;
+            usedWordsSet.delete(word);
+
+            undoChanges(changes);
+        }
+    }
+
+    backtrack();
+
+    return solutions;
 }
-
 // =========================================================
 // 4. API エンドポイント
 // =========================================================
@@ -614,7 +664,17 @@ app.post('/generate', (req, res) => {
     }
 
     const finalGrid = resultToDisplay.grid.map(row => row.map(cell => cell === ' ' ? '⬛︎' : cell));
-    res.json({ grid: finalGrid, placedWords: resultToDisplay.placedWords, score: resultToDisplay.score, listUsed: listUsedName });
+    const displayName =
+    listUsedName === "countries_capitals"
+        ? "国名・首都名"
+        : listUsedName;
+
+res.json({
+    grid: finalGrid,
+    placedWords: resultToDisplay.placedWords,
+    score: resultToDisplay.score,
+    listUsed: displayName
+});
 });
 
 // パターン解法API
@@ -640,7 +700,15 @@ app.post('/solve', (req, res) => {
         sol.map(row => row.map(cell => cell === '' ? ' ' : cell))
     );
 
-    res.json({ solutions: formattedSolutions, listUsed: listUsedName });
+   const displayName =
+    listUsedName === "countries_capitals"
+        ? "国名・首都名"
+        : listUsedName;
+
+res.json({
+    solutions: formattedSolutions,
+    listUsed: displayName
+});
 });
 
 app.listen(port, () => {
