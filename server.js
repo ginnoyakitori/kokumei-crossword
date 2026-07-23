@@ -1,8 +1,10 @@
-﻿// server.js (統合版: 生成モード & パターン解法モード)
+﻿// server.js
+// 統合版: 通常生成モード & 密集優先生成モード & パターン解法モード
 
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+
 const app = express();
 const port = process.env.PORT || 3000;
 
@@ -33,18 +35,18 @@ function normalizeWord(word) {
 function shuffleArray(array) {
     for (let i = array.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
+
         [array[i], array[j]] = [array[j], array[i]];
     }
 
     return array;
 }
 
-// データ構造
 const filesMap = {
-    'pokemon': ['pokemon.txt'],
-    'countries': ['countries.txt'],
-    'capitals': ['capitals.txt'],
-    'countries_capitals': ['countries.txt', 'capitals.txt']
+    pokemon: ['pokemon.txt'],
+    countries: ['countries.txt'],
+    capitals: ['capitals.txt'],
+    countries_capitals: ['countries.txt', 'capitals.txt']
 };
 
 // ジェネレーター用
@@ -54,12 +56,16 @@ let indexedWordLists = {};
 const wordsByLengthSolver = {};
 const intersectionIndex = {};
 
+// 密集生成用: フック文字ごとの単語インデックス
+const denseWordIndex = {};
+
 function buildIntersectionIndex(key) {
     const listWordsByLength = wordsByLengthSolver[key];
     const index = intersectionIndex[key];
 
     for (const length in listWordsByLength) {
         index[length] = {};
+
         const words = listWordsByLength[length];
 
         for (let pos = 0; pos < parseInt(length); pos++) {
@@ -79,10 +85,11 @@ function buildIntersectionIndex(key) {
 }
 
 function loadAndOptimizeWordLists() {
-    console.log("単語リストを読み込み、最適化中...");
+    console.log('単語リストを読み込み、最適化中...');
 
     for (const key in filesMap) {
         const fileList = filesMap[key];
+
         const uniqueWordsGen = new Set();
         const uniqueNormWordsSolver = new Set();
 
@@ -149,26 +156,73 @@ function loadAndOptimizeWordLists() {
 
         if (uniqueNormWordsSolver.size > 0) {
             buildIntersectionIndex(key);
-            console.log(`- リスト [${key}]: 登録完了（重複排除済み）`);
+            console.log(`- リスト [${key}]: 登録完了`);
         }
     }
 }
 
+function buildDenseWordIndex() {
+    for (const listName in indexedWordLists) {
+        denseWordIndex[listName] = {};
+
+        for (const length in indexedWordLists[listName]) {
+            const words = indexedWordLists[listName][length];
+
+            for (const word of words) {
+                for (let pos = 0; pos < word.length; pos++) {
+                    const char = word[pos];
+
+                    if (!denseWordIndex[listName][char]) {
+                        denseWordIndex[listName][char] = [];
+                    }
+
+                    denseWordIndex[listName][char].push({
+                        word,
+                        pos,
+                        length: word.length
+                    });
+                }
+            }
+        }
+    }
+
+    console.log('- 密集生成用インデックス構築完了');
+}
+
 loadAndOptimizeWordLists();
+buildDenseWordIndex();
 
 // =========================================================
-// 2. ジェネレーター ロジック
+// 盤面ユーティリティ
 // =========================================================
 
 function createEmptyGrid(rows, cols) {
     return Array.from({ length: rows }, () => Array(cols).fill(' '));
 }
 
+function displayListName(listUsedName) {
+    return listUsedName === 'countries_capitals'
+        ? '国名・首都名'
+        : listUsedName;
+}
+
+function gridToDisplay(grid) {
+    return grid.map(row =>
+        row.map(cell => cell === ' ' ? '⬛︎' : cell)
+    );
+}
+
+// =========================================================
+// 2. 通常ジェネレーター
+// =========================================================
+
 function placeWord(grid, word, r, c, direction, isFirstWord) {
     const rows = grid.length;
     const cols = grid[0].length;
     const length = word.length;
+
     const newGrid = grid.map(row => [...row]);
+
     let intersectionCount = 0;
 
     for (let i = 0; i < length; i++) {
@@ -257,14 +311,8 @@ function countIsolatedEmptyBlocks(grid) {
     const isolatedCells = new Set();
 
     const directions = [
-        [-1, 0],
-        [1, 0],
-        [0, -1],
-        [0, 1],
-        [-1, -1],
-        [-1, 1],
-        [1, -1],
-        [1, 1]
+        [-1, 0], [1, 0], [0, -1], [0, 1],
+        [-1, -1], [-1, 1], [1, -1], [1, 1]
     ];
 
     for (let r = 0; r < rows; r++) {
@@ -275,6 +323,7 @@ function countIsolatedEmptyBlocks(grid) {
                 const currentBlock = new Set();
 
                 visited[r][c] = true;
+                currentBlock.add(`${r},${c}`);
 
                 if (
                     r === 0 ||
@@ -284,8 +333,6 @@ function countIsolatedEmptyBlocks(grid) {
                 ) {
                     isTouchingBoundary = true;
                 }
-
-                currentBlock.add(`${r},${c}`);
 
                 let head = 0;
 
@@ -325,6 +372,7 @@ function countIsolatedEmptyBlocks(grid) {
 
                 if (!isTouchingBoundary) {
                     isolatedBlockCount++;
+
                     currentBlock.forEach(cell => isolatedCells.add(cell));
                 }
             }
@@ -345,10 +393,7 @@ function getUntouchedWords(placedWords, isolatedCells) {
     const untouchedWords = [];
 
     const adjacencies = [
-        [-1, 0],
-        [1, 0],
-        [0, -1],
-        [0, 1]
+        [-1, 0], [1, 0], [0, -1], [0, 1]
     ];
 
     for (const pWord of placedWords) {
@@ -365,9 +410,7 @@ function getUntouchedWords(placedWords, isolatedCells) {
                 }
             }
 
-            if (isTouching) {
-                break;
-            }
+            if (isTouching) break;
         }
 
         if (!isTouching) {
@@ -376,95 +419,6 @@ function getUntouchedWords(placedWords, isolatedCells) {
     }
 
     return untouchedWords;
-}
-
-// =========================================================
-// 密集ブロック評価
-// 2×2 / 2×3 / 3×2 / 3×3 の文字の塊を加点
-// =========================================================
-function countDenseBlocks(grid) {
-    const rows = grid.length;
-    const cols = grid[0].length;
-
-    let score = 0;
-
-    function isFilledRect(r, c, h, w) {
-        for (let y = 0; y < h; y++) {
-            for (let x = 0; x < w; x++) {
-                if (grid[r + y][c + x] === ' ') {
-                    return false;
-                }
-            }
-        }
-
-        return true;
-    }
-
-    // 2×2
-    for (let r = 0; r <= rows - 2; r++) {
-        for (let c = 0; c <= cols - 2; c++) {
-            if (isFilledRect(r, c, 2, 2)) {
-                score += 1;
-            }
-        }
-    }
-
-    // 2×3
-    for (let r = 0; r <= rows - 2; r++) {
-        for (let c = 0; c <= cols - 3; c++) {
-            if (isFilledRect(r, c, 2, 3)) {
-                score += 3;
-            }
-        }
-    }
-
-    // 3×2
-    for (let r = 0; r <= rows - 3; r++) {
-        for (let c = 0; c <= cols - 2; c++) {
-            if (isFilledRect(r, c, 3, 2)) {
-                score += 3;
-            }
-        }
-    }
-
-    // 3×3
-    for (let r = 0; r <= rows - 3; r++) {
-        for (let c = 0; c <= cols - 3; c++) {
-            if (isFilledRect(r, c, 3, 3)) {
-                score += 8;
-            }
-        }
-    }
-
-    return score;
-}
-
-// 3×3 範囲内の文字密度も評価する
-// 完全に埋まっていなくても、文字が多いほど加点
-function countDenseAreaScore(grid) {
-    const rows = grid.length;
-    const cols = grid[0].length;
-
-    let score = 0;
-
-    for (let r = 0; r <= rows - 3; r++) {
-        for (let c = 0; c <= cols - 3; c++) {
-            let filled = 0;
-
-            for (let y = 0; y < 3; y++) {
-                for (let x = 0; x < 3; x++) {
-                    if (grid[r + y][c + x] !== ' ') {
-                        filled++;
-                    }
-                }
-            }
-
-            // 二乗することで、密集している場所をより強く評価
-            score += filled * filled;
-        }
-    }
-
-    return score;
 }
 
 function calculateDensityScore(grid, placedWords) {
@@ -478,48 +432,22 @@ function calculateDensityScore(grid, placedWords) {
         }
     }
 
-    const { count: isolatedBlocks, isolatedCells } =
-        countIsolatedEmptyBlocks(grid);
+    const { count: isolatedBlocks, isolatedCells } = countIsolatedEmptyBlocks(grid);
 
-    const untouchedWords =
-        getUntouchedWords(placedWords, isolatedCells);
+    const untouchedWords = getUntouchedWords(placedWords, isolatedCells);
+    const touchedWordsCount = placedWords.length - untouchedWords.length;
 
-    const touchedWordsCount =
-        placedWords.length - untouchedWords.length;
+    const baseScore = placedWords.length * 10000 - emptyCells;
+    const topologyBonus = isolatedBlocks * 10000000000;
 
-    // 基本点
-    const baseScore =
-        placedWords.length * 10000 - emptyCells;
-
-    // 孤立空白ブロックは最重要
-    const topologyBonus =
-        isolatedBlocks * 10000000000;
-
-    // 孤立空白ブロックがない盤面は強く減点
-    const noIsolatedBlockPenalty =
-        isolatedBlocks === 0 ? -5000000000 : 0;
-
-    // 孤立ブロックに接していない単語を強く減点
-    const untouchedWordPenalty =
-        untouchedWords.length * -300000000;
-
-    // 2×2 / 2×3 / 3×2 / 3×3 の完全な文字ブロック加点
-    // 強すぎると不合格盤面を選びやすくなるため控えめにする
-    const denseBlockBonus =
-        countDenseBlocks(grid) * 30000;
-
-    // 3×3 周辺密度の加点
-    // こちらも控えめ
-    const denseAreaBonus =
-        countDenseAreaScore(grid) * 2000;
+    const noIsolatedBlockPenalty = isolatedBlocks === 0 ? -5000000000 : 0;
+    const untouchedWordPenalty = untouchedWords.length * -300000000;
 
     let contactBonus = 0;
 
     if (placedWords.length > 0) {
-        contactBonus =
-            (touchedWordsCount / placedWords.length) * 100000;
+        contactBonus = (touchedWordsCount / placedWords.length) * 100000;
 
-        // 全単語が孤立空白ブロックに接している場合は追加ボーナス
         if (isolatedBlocks > 0 && untouchedWords.length === 0) {
             contactBonus += 1000000;
         }
@@ -529,8 +457,6 @@ function calculateDensityScore(grid, placedWords) {
         topologyBonus +
         noIsolatedBlockPenalty +
         untouchedWordPenalty +
-        denseBlockBonus +
-        denseAreaBonus +
         baseScore +
         contactBonus
     );
@@ -695,6 +621,7 @@ function generateCrossword(rows, cols, indexedWords, initialPlacedWords = []) {
 
                                 if (newGrid) {
                                     usedWords.add(word);
+
                                     placedWords.push({
                                         word,
                                         r: startR,
@@ -739,6 +666,7 @@ function generateCrossword(rows, cols, indexedWords, initialPlacedWords = []) {
 
                 if (placedGrid) {
                     initialUsed.add(startWord);
+
                     initialPlaced.push({
                         word: startWord,
                         r: centerR,
@@ -762,7 +690,6 @@ function generateCrossword(rows, cols, indexedWords, initialPlacedWords = []) {
 
 // =========================================================
 // 2-B. 密集優先ジェネレーター
-// 2×2 / 2×3 / 3×2 / 3×3 の完全文字ブロックを優先
 // =========================================================
 
 function countFilledCells(grid) {
@@ -803,7 +730,6 @@ function countDenseBlocksDetailed(grid) {
         return true;
     }
 
-    // 2×2
     for (let r = 0; r <= rows - 2; r++) {
         for (let c = 0; c <= cols - 2; c++) {
             if (isFilledRect(r, c, 2, 2)) {
@@ -813,7 +739,6 @@ function countDenseBlocksDetailed(grid) {
         }
     }
 
-    // 2×3
     for (let r = 0; r <= rows - 2; r++) {
         for (let c = 0; c <= cols - 3; c++) {
             if (isFilledRect(r, c, 2, 3)) {
@@ -823,7 +748,6 @@ function countDenseBlocksDetailed(grid) {
         }
     }
 
-    // 3×2
     for (let r = 0; r <= rows - 3; r++) {
         for (let c = 0; c <= cols - 2; c++) {
             if (isFilledRect(r, c, 3, 2)) {
@@ -833,7 +757,6 @@ function countDenseBlocksDetailed(grid) {
         }
     }
 
-    // 3×3
     for (let r = 0; r <= rows - 3; r++) {
         for (let c = 0; c <= cols - 3; c++) {
             if (isFilledRect(r, c, 3, 3)) {
@@ -851,24 +774,15 @@ function calculateDenseModeScore(grid, placedWords) {
     const filledCells = countFilledCells(grid);
     const emptyCells = grid.length * grid[0].length - filledCells;
 
-    // 密集モードでは 3×3 / 2×3 / 3×2 / 2×2 を最優先
     const denseBlockBonus = dense.score * 10000000;
-
-    // 文字で埋まっているマスも強く評価
     const filledBonus = filledCells * 100000;
-
-    // 単語数も評価。ただし密集ブロックよりは弱め
-    const wordBonus = placedWords.length * 50000;
-
-    // 空白は軽く減点
+    const wordBonus = placedWords.length * 70000;
     const emptyPenalty = emptyCells * 100;
 
     return denseBlockBonus + filledBonus + wordBonus - emptyPenalty;
 }
 
-// 密集モード専用の配置関数
-// 通常モードと違い、横単語の上下・縦単語の左右の隣接を禁止しない
-function placeWordDense(grid, word, r, c, direction, isFirstWord) {
+function placeWordDenseWithStats(grid, word, r, c, direction, isFirstWord) {
     const rows = grid.length;
     const cols = grid[0].length;
     const length = word.length;
@@ -908,8 +822,6 @@ function placeWordDense(grid, word, r, c, direction, isFirstWord) {
         newGrid[currentR][currentC] = word[i];
     }
 
-    // 単語の直前・直後だけは通常モード同様にふさがない
-    // これを外すと単語同士が一直線に連結しすぎるため
     const beforeR = r - (direction === 'vertical' ? 1 : 0);
     const beforeC = c - (direction === 'horizontal' ? 1 : 0);
     const afterR = r + (direction === 'vertical' ? length : 0);
@@ -935,21 +847,26 @@ function placeWordDense(grid, word, r, c, direction, isFirstWord) {
         return null;
     }
 
-    // 2語目以降は、最低1文字は交差していることを要求
     if (!isFirstWord && intersectionCount === 0) {
         return null;
     }
 
-    // 完全に既存マスだけをなぞる配置は無意味なので禁止
     if (newCellCount === 0) {
         return null;
     }
 
-    return newGrid;
+    return {
+        grid: newGrid,
+        intersectionCount,
+        newCellCount
+    };
 }
 
-function generateDenseCrossword(rows, cols, indexedWords) {
-    const MAX_ATTEMPTS = 120000;
+function generateDenseCrossword(rows, cols, indexedWords, wordIndex) {
+    const MAX_ATTEMPTS = 80000;
+    const BEAM_WIDTH = 8;
+    const MAX_INITIAL_CANDIDATES_PER_LENGTH = 80;
+    const MAX_INDEXED_CANDIDATES_PER_HOOK = 120;
 
     let attemptCount = 0;
 
@@ -974,34 +891,27 @@ function generateDenseCrossword(rows, cols, indexedWords) {
 
     function findHookPoints(grid) {
         const points = [];
+        const centerR = rows / 2;
+        const centerC = cols / 2;
 
         for (let r = 0; r < rows; r++) {
             for (let c = 0; c < cols; c++) {
                 if (grid[r][c] !== ' ') {
+                    const distanceSq =
+                        Math.pow(r - centerR, 2) +
+                        Math.pow(c - centerC, 2);
+
                     points.push({
                         r,
                         c,
-                        char: grid[r][c]
+                        char: grid[r][c],
+                        distanceSq
                     });
                 }
             }
         }
 
-        // 密集モードでは中心優先
-        const centerR = rows / 2;
-        const centerC = cols / 2;
-
-        return points.sort((a, b) => {
-            const da =
-                Math.pow(a.r - centerR, 2) +
-                Math.pow(a.c - centerC, 2);
-
-            const db =
-                Math.pow(b.r - centerR, 2) +
-                Math.pow(b.c - centerC, 2);
-
-            return da - db;
-        });
+        return points.sort((a, b) => a.distanceSq - b.distanceSq);
     }
 
     function updateBest(currentGrid, placedWords) {
@@ -1019,6 +929,173 @@ function generateDenseCrossword(rows, cols, indexedWords) {
         }
     }
 
+    function evaluatePlacement(beforeGrid, afterGrid, stats, placedWordsAfter) {
+        const beforeDense = countDenseBlocksDetailed(beforeGrid);
+        const afterDense = countDenseBlocksDetailed(afterGrid);
+
+        const denseGain = afterDense.score - beforeDense.score;
+
+        const block2x2Gain = afterDense.block2x2 - beforeDense.block2x2;
+        const block2x3Gain = afterDense.block2x3 - beforeDense.block2x3;
+        const block3x2Gain = afterDense.block3x2 - beforeDense.block3x2;
+        const block3x3Gain = afterDense.block3x3 - beforeDense.block3x3;
+
+        const localScore =
+            block3x3Gain * 100000000 +
+            block2x3Gain * 20000000 +
+            block3x2Gain * 20000000 +
+            block2x2Gain * 5000000 +
+            denseGain * 100000 +
+            stats.intersectionCount * 300000 +
+            stats.newCellCount * 50000 +
+            placedWordsAfter.length * 1000;
+
+        return localScore;
+    }
+
+    function getInitialPlacements(currentGrid, usedWords, placedWords) {
+        const placements = [];
+
+        for (const length of availableLengths) {
+            const candidates = currentCandidates[length];
+
+            if (!candidates) continue;
+
+            const limitedCandidates = candidates.slice(0, MAX_INITIAL_CANDIDATES_PER_LENGTH);
+
+            for (const word of limitedCandidates) {
+                if (usedWords.has(word)) continue;
+
+                const directions = ['horizontal', 'vertical'];
+
+                for (const direction of directions) {
+                    const startR =
+                        direction === 'horizontal'
+                            ? Math.floor(rows / 2)
+                            : Math.floor(rows / 2 - word.length / 2);
+
+                    const startC =
+                        direction === 'horizontal'
+                            ? Math.floor(cols / 2 - word.length / 2)
+                            : Math.floor(cols / 2);
+
+                    const placed = placeWordDenseWithStats(
+                        currentGrid,
+                        word,
+                        startR,
+                        startC,
+                        direction,
+                        true
+                    );
+
+                    if (!placed) continue;
+
+                    const nextPlacedWords = [
+                        ...placedWords,
+                        {
+                            word,
+                            r: startR,
+                            c: startC,
+                            direction
+                        }
+                    ];
+
+                    const score = evaluatePlacement(
+                        currentGrid,
+                        placed.grid,
+                        placed,
+                        nextPlacedWords
+                    );
+
+                    placements.push({
+                        word,
+                        grid: placed.grid,
+                        r: startR,
+                        c: startC,
+                        direction,
+                        score
+                    });
+                }
+            }
+        }
+
+        return placements
+            .sort((a, b) => b.score - a.score)
+            .slice(0, BEAM_WIDTH);
+    }
+
+    function getNextPlacements(currentGrid, usedWords, placedWords) {
+        const placements = [];
+        const hookPoints = findHookPoints(currentGrid);
+
+        for (const hookPoint of hookPoints) {
+            const indexedCandidates = wordIndex[hookPoint.char] || [];
+            const limitedIndexedCandidates = indexedCandidates.slice(0, MAX_INDEXED_CANDIDATES_PER_HOOK);
+
+            for (const item of limitedIndexedCandidates) {
+                const word = item.word;
+                const i = item.pos;
+
+                if (usedWords.has(word)) continue;
+
+                const directions = ['horizontal', 'vertical'];
+
+                for (const direction of directions) {
+                    const startR =
+                        direction === 'horizontal'
+                            ? hookPoint.r
+                            : hookPoint.r - i;
+
+                    const startC =
+                        direction === 'horizontal'
+                            ? hookPoint.c - i
+                            : hookPoint.c;
+
+                    const placed = placeWordDenseWithStats(
+                        currentGrid,
+                        word,
+                        startR,
+                        startC,
+                        direction,
+                        false
+                    );
+
+                    if (!placed) continue;
+
+                    const nextPlacedWords = [
+                        ...placedWords,
+                        {
+                            word,
+                            r: startR,
+                            c: startC,
+                            direction
+                        }
+                    ];
+
+                    const score = evaluatePlacement(
+                        currentGrid,
+                        placed.grid,
+                        placed,
+                        nextPlacedWords
+                    );
+
+                    placements.push({
+                        word,
+                        grid: placed.grid,
+                        r: startR,
+                        c: startC,
+                        direction,
+                        score
+                    });
+                }
+            }
+        }
+
+        return placements
+            .sort((a, b) => b.score - a.score)
+            .slice(0, BEAM_WIDTH);
+    }
+
     function backtrack(currentGrid, usedWords, placedWords) {
         if (attemptCount++ > MAX_ATTEMPTS) {
             return;
@@ -1026,105 +1103,44 @@ function generateDenseCrossword(rows, cols, indexedWords) {
 
         updateBest(currentGrid, placedWords);
 
-        const isCurrentlyEmpty = placedWords.length === 0;
-        const hookPoints = findHookPoints(currentGrid);
+        let placements;
 
-        for (const length of availableLengths) {
-            const candidates = currentCandidates[length];
+        if (placedWords.length === 0) {
+            placements = getInitialPlacements(
+                currentGrid,
+                usedWords,
+                placedWords
+            );
+        } else {
+            placements = getNextPlacements(
+                currentGrid,
+                usedWords,
+                placedWords
+            );
+        }
 
-            if (!candidates) continue;
+        if (placements.length === 0) {
+            return;
+        }
 
-            for (const word of candidates) {
-                if (usedWords.has(word)) continue;
+        for (const placement of placements) {
+            usedWords.add(placement.word);
 
-                if (isCurrentlyEmpty) {
-                    const directions = shuffleArray(['horizontal', 'vertical']);
+            placedWords.push({
+                word: placement.word,
+                r: placement.r,
+                c: placement.c,
+                direction: placement.direction
+            });
 
-                    for (const direction of directions) {
-                        const startR =
-                            direction === 'horizontal'
-                                ? Math.floor(rows / 2)
-                                : Math.floor(rows / 2 - word.length / 2);
+            backtrack(
+                placement.grid,
+                usedWords,
+                placedWords
+            );
 
-                        const startC =
-                            direction === 'horizontal'
-                                ? Math.floor(cols / 2 - word.length / 2)
-                                : Math.floor(cols / 2);
-
-                        const placedGrid = placeWordDense(
-                            currentGrid,
-                            word,
-                            startR,
-                            startC,
-                            direction,
-                            true
-                        );
-
-                        if (placedGrid) {
-                            usedWords.add(word);
-                            placedWords.push({
-                                word,
-                                r: startR,
-                                c: startC,
-                                direction
-                            });
-
-                            backtrack(placedGrid, usedWords, placedWords);
-
-                            usedWords.delete(word);
-                            placedWords.pop();
-                        }
-                    }
-                } else {
-                    for (const hookPoint of hookPoints) {
-                        for (let i = 0; i < word.length; i++) {
-                            if (word[i] !== hookPoint.char) continue;
-
-                            const directions = shuffleArray(['horizontal', 'vertical']);
-
-                            for (const direction of directions) {
-                                const startR =
-                                    direction === 'horizontal'
-                                        ? hookPoint.r
-                                        : hookPoint.r - i;
-
-                                const startC =
-                                    direction === 'horizontal'
-                                        ? hookPoint.c - i
-                                        : hookPoint.c;
-
-                                const placedGrid = placeWordDense(
-                                    currentGrid,
-                                    word,
-                                    startR,
-                                    startC,
-                                    direction,
-                                    false
-                                );
-
-                                if (placedGrid) {
-                                    usedWords.add(word);
-                                    placedWords.push({
-                                        word,
-                                        r: startR,
-                                        c: startC,
-                                        direction
-                                    });
-
-                                    backtrack(placedGrid, usedWords, placedWords);
-
-                                    usedWords.delete(word);
-                                    placedWords.pop();
-
-                                    // 完全探索しすぎると重いので、
-                                    // ある程度良い枝を見つけたら次へ進む
-                                    return;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            placedWords.pop();
+            usedWords.delete(placement.word);
         }
     }
 
@@ -1136,13 +1152,15 @@ function generateDenseCrossword(rows, cols, indexedWords) {
 
     return bestSolution;
 }
+
 // =========================================================
-// 3. ソルバー ロジック
+// 3. ソルバー
 // =========================================================
 
 function getWordSlots(pattern) {
     const rows = pattern.length;
     const cols = pattern[0].length;
+
     const wordSlots = [];
 
     for (let r = 0; r < rows; r++) {
@@ -1260,13 +1278,12 @@ function solveCrossword(pattern, optimizedData, listUsedName) {
 
     const assignments = Array(numSlots).fill(null);
     const usedWordsSet = new Set();
-
     const solutions = [];
 
     const rows = pattern.length;
     const cols = pattern[0].length;
 
-    const grid = Array.from({ length: rows }, () => Array(cols).fill(""));
+    const grid = Array.from({ length: rows }, () => Array(cols).fill(''));
 
     function getCandidates(slot) {
         const candidates = [];
@@ -1277,11 +1294,11 @@ function solveCrossword(pattern, optimizedData, listUsedName) {
 
             let ok = true;
 
-            if (slot.direction === "horizontal") {
+            if (slot.direction === 'horizontal') {
                 for (let i = 0; i < slot.length; i++) {
                     const cell = grid[slot.position.r][slot.position.c + i];
 
-                    if (cell !== "" && cell !== word[i]) {
+                    if (cell !== '' && cell !== word[i]) {
                         ok = false;
                         break;
                     }
@@ -1290,7 +1307,7 @@ function solveCrossword(pattern, optimizedData, listUsedName) {
                 for (let i = 0; i < slot.length; i++) {
                     const cell = grid[slot.position.r + i][slot.position.c];
 
-                    if (cell !== "" && cell !== word[i]) {
+                    if (cell !== '' && cell !== word[i]) {
                         ok = false;
                         break;
                     }
@@ -1327,12 +1344,12 @@ function solveCrossword(pattern, optimizedData, listUsedName) {
     function placeSolverWord(slot, word) {
         const changes = [];
 
-        if (slot.direction === "horizontal") {
+        if (slot.direction === 'horizontal') {
             for (let i = 0; i < slot.length; i++) {
                 const r = slot.position.r;
                 const c = slot.position.c + i;
 
-                if (grid[r][c] === "") {
+                if (grid[r][c] === '') {
                     grid[r][c] = word[i];
                     changes.push([r, c]);
                 }
@@ -1342,7 +1359,7 @@ function solveCrossword(pattern, optimizedData, listUsedName) {
                 const r = slot.position.r + i;
                 const c = slot.position.c;
 
-                if (grid[r][c] === "") {
+                if (grid[r][c] === '') {
                     grid[r][c] = word[i];
                     changes.push([r, c]);
                 }
@@ -1354,7 +1371,7 @@ function solveCrossword(pattern, optimizedData, listUsedName) {
 
     function undoChanges(changes) {
         for (const [r, c] of changes) {
-            grid[r][c] = "";
+            grid[r][c] = '';
         }
     }
 
@@ -1393,7 +1410,7 @@ function solveCrossword(pattern, optimizedData, listUsedName) {
 // 4. API エンドポイント
 // =========================================================
 
-// 動的生成API
+// 通常 自動生成API
 app.post('/generate', (req, res) => {
     const { rows, cols, listName } = req.body;
 
@@ -1494,34 +1511,24 @@ app.post('/generate', (req, res) => {
     if (isolatedCells.size === 0 || finalUntouchedWords.length > 0) {
         const warning =
             finalUntouchedWords.length > 0
-                ? "全ての単語を孤立ブロックに接させることができませんでした。不合格な単語が残っています。"
-                : "要件を満たす孤立した空きマス塊のあるパズルが見つかりませんでした。";
+                ? '全ての単語を孤立ブロックに接させることができませんでした。不合格な単語が残っています。'
+                : '要件を満たす孤立した空きマス塊のあるパズルが見つかりませんでした。';
 
         return res.json({
-            grid: createEmptyGrid(rows, cols).map(row =>
-                row.map(cell => cell === ' ' ? '⬛︎' : cell)
-            ),
+            grid: gridToDisplay(createEmptyGrid(rows, cols)),
             placedWords: [],
             score: 0,
-            listUsed: listUsedName,
+            listUsed: displayListName(listUsedName),
             warning
         });
     }
 
-    const finalGrid = resultToDisplay.grid.map(row =>
-        row.map(cell => cell === ' ' ? '⬛︎' : cell)
-    );
-
-    const displayName =
-        listUsedName === "countries_capitals"
-            ? "国名・首都名"
-            : listUsedName;
-
     res.json({
-        grid: finalGrid,
+        grid: gridToDisplay(resultToDisplay.grid),
         placedWords: resultToDisplay.placedWords,
         score: resultToDisplay.score,
-        listUsed: displayName
+        listUsed: displayListName(listUsedName),
+        mode: 'normal'
     });
 });
 
@@ -1548,6 +1555,7 @@ app.post('/generate-dense', (req, res) => {
             : 'pokemon';
 
     const currentWordList = indexedWordLists[listUsedName];
+    const currentWordIndex = denseWordIndex[listUsedName] || {};
 
     let bestResult = {
         grid: createEmptyGrid(rows, cols),
@@ -1557,13 +1565,14 @@ app.post('/generate-dense', (req, res) => {
         denseInfo: null
     };
 
-    const NUM_RESTARTS = 20;
+    const NUM_RESTARTS = 16;
 
     for (let i = 0; i < NUM_RESTARTS; i++) {
         const result = generateDenseCrossword(
             rows,
             cols,
-            currentWordList
+            currentWordList,
+            currentWordIndex
         );
 
         if (result.densityScore > bestResult.densityScore) {
@@ -1571,23 +1580,14 @@ app.post('/generate-dense', (req, res) => {
         }
     }
 
-    const finalGrid = bestResult.grid.map(row =>
-        row.map(cell => cell === ' ' ? '⬛︎' : cell)
-    );
-
-    const displayName =
-        listUsedName === "countries_capitals"
-            ? "国名・首都名"
-            : listUsedName;
-
     res.json({
-        grid: finalGrid,
+        grid: gridToDisplay(bestResult.grid),
         placedWords: bestResult.placedWords,
         score: bestResult.score,
         densityScore: bestResult.densityScore,
-        denseInfo: bestResult.denseInfo,
-        listUsed: displayName,
-        mode: "dense"
+        denseInfo: bestResult.denseInfo || countDenseBlocksDetailed(bestResult.grid),
+        listUsed: displayListName(listUsedName),
+        mode: 'dense'
     });
 });
 
@@ -1617,7 +1617,7 @@ app.post('/solve', (req, res) => {
     if (solutions.length === 0) {
         return res.json({
             solutions: [],
-            warning: "解が見つかりませんでした。パターンや辞書を変えてみてください。"
+            warning: '解が見つかりませんでした。パターンや辞書を変えてみてください。'
         });
     }
 
@@ -1627,18 +1627,13 @@ app.post('/solve', (req, res) => {
         )
     );
 
-    const displayName =
-        listUsedName === "countries_capitals"
-            ? "国名・首都名"
-            : listUsedName;
-
     res.json({
         solutions: formattedSolutions,
-        listUsed: displayName
+        listUsed: displayListName(listUsedName)
     });
 });
 
 app.listen(port, () => {
-    console.log(`統合サーバーが起動しました 🚀`);
+    console.log('統合サーバーが起動しました 🚀');
     console.log(`ブラウザで http://localhost:${port}/ にアクセスしてください`);
 });
