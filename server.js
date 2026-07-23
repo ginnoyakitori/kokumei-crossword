@@ -382,7 +382,6 @@ function getUntouchedWords(placedWords, isolatedCells) {
 // 密集ブロック評価
 // 2×2 / 2×3 / 3×2 / 3×3 の文字の塊を加点
 // =========================================================
-
 function countDenseBlocks(grid) {
     const rows = grid.length;
     const cols = grid[0].length;
@@ -414,7 +413,7 @@ function countDenseBlocks(grid) {
     for (let r = 0; r <= rows - 2; r++) {
         for (let c = 0; c <= cols - 3; c++) {
             if (isFilledRect(r, c, 2, 3)) {
-                score += 4;
+                score += 3;
             }
         }
     }
@@ -423,7 +422,7 @@ function countDenseBlocks(grid) {
     for (let r = 0; r <= rows - 3; r++) {
         for (let c = 0; c <= cols - 2; c++) {
             if (isFilledRect(r, c, 3, 2)) {
-                score += 4;
+                score += 3;
             }
         }
     }
@@ -432,7 +431,7 @@ function countDenseBlocks(grid) {
     for (let r = 0; r <= rows - 3; r++) {
         for (let c = 0; c <= cols - 3; c++) {
             if (isFilledRect(r, c, 3, 3)) {
-                score += 12;
+                score += 8;
             }
         }
     }
@@ -479,34 +478,57 @@ function calculateDensityScore(grid, placedWords) {
         }
     }
 
-    const { count: isolatedBlocks, isolatedCells } = countIsolatedEmptyBlocks(grid);
+    const { count: isolatedBlocks, isolatedCells } =
+        countIsolatedEmptyBlocks(grid);
 
-    const baseScore = placedWords.length * 10000 - emptyCells;
+    const untouchedWords =
+        getUntouchedWords(placedWords, isolatedCells);
 
-    // 孤立空白ブロックを最重要視
-    const topologyBonus = isolatedBlocks * 10000000000;
+    const touchedWordsCount =
+        placedWords.length - untouchedWords.length;
 
-    // 2×2 / 2×3 / 3×2 / 3×3 の完全に文字で埋まった塊を評価
-    const denseBlockBonus = countDenseBlocks(grid) * 200000;
+    // 基本点
+    const baseScore =
+        placedWords.length * 10000 - emptyCells;
 
-    // 3×3 近傍の文字密度を評価
-    const denseAreaBonus = countDenseAreaScore(grid) * 20000;
+    // 孤立空白ブロックは最重要
+    const topologyBonus =
+        isolatedBlocks * 10000000000;
 
-    const untouchedWords = getUntouchedWords(placedWords, isolatedCells);
-    const touchedWordsCount = placedWords.length - untouchedWords.length;
+    // 孤立空白ブロックがない盤面は強く減点
+    const noIsolatedBlockPenalty =
+        isolatedBlocks === 0 ? -5000000000 : 0;
+
+    // 孤立ブロックに接していない単語を強く減点
+    const untouchedWordPenalty =
+        untouchedWords.length * -300000000;
+
+    // 2×2 / 2×3 / 3×2 / 3×3 の完全な文字ブロック加点
+    // 強すぎると不合格盤面を選びやすくなるため控えめにする
+    const denseBlockBonus =
+        countDenseBlocks(grid) * 30000;
+
+    // 3×3 周辺密度の加点
+    // こちらも控えめ
+    const denseAreaBonus =
+        countDenseAreaScore(grid) * 2000;
 
     let contactBonus = 0;
 
     if (placedWords.length > 0) {
-        contactBonus = (touchedWordsCount / placedWords.length) * 100000;
+        contactBonus =
+            (touchedWordsCount / placedWords.length) * 100000;
 
-        if (untouchedWords.length === 0) {
-            contactBonus += 50000;
+        // 全単語が孤立空白ブロックに接している場合は追加ボーナス
+        if (isolatedBlocks > 0 && untouchedWords.length === 0) {
+            contactBonus += 1000000;
         }
     }
 
     return (
         topologyBonus +
+        noIsolatedBlockPenalty +
+        untouchedWordPenalty +
         denseBlockBonus +
         denseAreaBonus +
         baseScore +
