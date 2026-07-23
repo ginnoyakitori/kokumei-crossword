@@ -4,58 +4,275 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Crossword Studio</title>
+
     <style>
         :root {
             --primary-color: #3498db;
             --secondary-color: #2ecc71;
             --accent-color: #e74c3c;
+            --warning-color: #f39c12;
             --bg-color: #f4f7f6;
             --cell-size: 38px;
         }
 
-        body { font-family: 'Helvetica Neue', Arial, sans-serif; background-color: var(--bg-color); color: #333; margin: 0; padding: 20px; }
-        .container { max-width: 900px; margin: auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.08); }
-        h1 { text-align: center; color: #2c3e50; margin-bottom: 25px; }
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: #333;
+            margin: 0;
+            padding: 20px;
+        }
 
-        .global-controls { background: #f0f3f5; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: flex; justify-content: center; align-items: center; gap: 15px; }
-        select { padding: 8px 12px; border-radius: 5px; border: 1px solid #ccc; font-size: 14px; }
+        .container {
+            max-width: 900px;
+            margin: auto;
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+        }
 
-        .tabs { display: flex; border-bottom: 2px solid #ddd; margin-bottom: 25px; }
-        .tab-btn { flex: 1; padding: 12px; background: none; border: none; font-size: 16px; cursor: pointer; color: #7f8c8d; transition: 0.3s; border-bottom: 3px solid transparent; }
-        .tab-btn.active { color: var(--primary-color); border-bottom: 3px solid var(--primary-color); font-weight: bold; }
-        .tab-content { display: none; }
-        .tab-content.active { display: block; }
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 25px;
+        }
 
-        .controls { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; justify-content: center; align-items: center; }
-        input[type="number"] { width: 55px; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
-        button { padding: 10px 20px; border-radius: 5px; border: none; cursor: pointer; font-weight: bold; color: white; transition: 0.2s; }
-        .btn-gen { background-color: var(--primary-color); }
-        .btn-sol { background-color: var(--secondary-color); }
-        .btn-reset { background-color: #95a5a6; }
-        button:hover { opacity: 0.85; transform: translateY(-1px); }
+        .global-controls {
+            background: #f0f3f5;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
 
-        .grid-wrapper { overflow-x: auto; padding: 10px 0; }
-        .grid { display: grid; gap: 2px; background-color: #34495e; padding: 3px; margin: 0 auto; width: max-content; border-radius: 4px; }
-        .cell { width: var(--cell-size); height: var(--cell-size); background-color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 18px; text-transform: uppercase; user-select: none; }
-        .cell.black { background-color: #2c3e50; color: transparent; }
-        .cell.interactive { cursor: pointer; transition: background 0.1s; }
-        .cell.interactive:hover { background-color: #ecf0f1; }
+        select {
+            padding: 8px 12px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            font-size: 14px;
+            background: white;
+        }
 
-        .solution-container { border-top: 2px dashed #bdc3c7; margin-top: 40px; padding-top: 20px; }
-        .solution-item { margin-bottom: 50px; text-align: center; }
-        .solution-label { display: block; margin-bottom: 12px; font-weight: bold; color: var(--primary-color); font-size: 1.1em; }
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid #ddd;
+            margin-bottom: 25px;
+        }
 
-        .warning { color: var(--accent-color); font-weight: bold; text-align: center; margin: 10px 0; }
-        .info { text-align: center; margin: 10px 0; color: #7f8c8d; font-size: 0.95em; }
+        .tab-btn {
+            flex: 1;
+            padding: 12px;
+            background: none;
+            border: none;
+            font-size: 16px;
+            cursor: pointer;
+            color: #7f8c8d;
+            transition: 0.3s;
+            border-bottom: 3px solid transparent;
+        }
+
+        .tab-btn.active {
+            color: var(--primary-color);
+            border-bottom: 3px solid var(--primary-color);
+            font-weight: bold;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 20px;
+            justify-content: center;
+            align-items: center;
+        }
+
+        input[type="number"] {
+            width: 55px;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        button {
+            padding: 10px 20px;
+            border-radius: 5px;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+            color: white;
+            transition: 0.2s;
+        }
+
+        .btn-gen {
+            background-color: var(--primary-color);
+        }
+
+        .btn-sol {
+            background-color: var(--secondary-color);
+        }
+
+        .btn-reset {
+            background-color: #95a5a6;
+        }
+
+        button:hover {
+            opacity: 0.85;
+            transform: translateY(-1px);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .grid-wrapper {
+            overflow-x: auto;
+            padding: 10px 0;
+        }
+
+        .grid {
+            display: grid;
+            gap: 2px;
+            background-color: #34495e;
+            padding: 3px;
+            margin: 0 auto;
+            width: max-content;
+            border-radius: 4px;
+        }
+
+        .cell {
+            width: var(--cell-size);
+            height: var(--cell-size);
+            background-color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 18px;
+            text-transform: uppercase;
+            user-select: none;
+        }
+
+        .cell.black {
+            background-color: #2c3e50;
+            color: transparent;
+        }
+
+        .cell.interactive {
+            cursor: pointer;
+            transition: background 0.1s;
+        }
+
+        .cell.interactive:hover {
+            background-color: #ecf0f1;
+        }
+
+        .solution-container {
+            border-top: 2px dashed #bdc3c7;
+            margin-top: 40px;
+            padding-top: 20px;
+        }
+
+        .solution-item {
+            margin-bottom: 50px;
+            text-align: center;
+        }
+
+        .solution-label {
+            display: block;
+            margin-bottom: 12px;
+            font-weight: bold;
+            color: var(--primary-color);
+            font-size: 1.1em;
+        }
+
+        .warning {
+            color: var(--accent-color);
+            font-weight: bold;
+            text-align: center;
+            margin: 10px 0;
+        }
+
+        .info {
+            text-align: center;
+            margin: 10px 0;
+            color: #7f8c8d;
+            font-size: 0.95em;
+        }
+
+        .dense-info-box {
+            max-width: 520px;
+            margin: 12px auto;
+            background: #fff8e6;
+            border: 1px solid #f1c40f;
+            border-radius: 8px;
+            padding: 12px 16px;
+            color: #7a5a00;
+            font-size: 0.95em;
+            line-height: 1.7;
+        }
+
+        .dense-info-title {
+            font-weight: bold;
+            color: #b9770e;
+            margin-bottom: 5px;
+            text-align: center;
+        }
+
+        .mode-note {
+            background: #eef7ff;
+            border-left: 4px solid var(--primary-color);
+            padding: 10px 14px;
+            border-radius: 5px;
+            max-width: 640px;
+            margin: 10px auto 18px;
+            color: #46637a;
+            font-size: 0.9em;
+            line-height: 1.6;
+        }
+
+        @media (max-width: 600px) {
+            :root {
+                --cell-size: 32px;
+            }
+
+            .container {
+                padding: 18px;
+            }
+
+            .controls {
+                gap: 10px;
+            }
+
+            button {
+                padding: 9px 14px;
+            }
+        }
     </style>
 </head>
+
 <body>
 
 <div class="container">
     <h1>国名クロスワード</h1>
 
     <div class="global-controls">
-        <label>📚 使用辞書リスト: 
+        <label>
+            📚 使用辞書リスト:
             <select id="dictionary-select">
                 <option value="pokemon">ポケモン</option>
                 <option value="countries">国名</option>
@@ -66,35 +283,85 @@
     </div>
 
     <div class="tabs">
-        <button class="tab-btn active" id="tab-gen" onclick="switchTab('generator')">自動生成モード</button>
-        <button class="tab-btn" id="tab-sol" onclick="switchTab('solver')">解法モード</button>
+        <button class="tab-btn active" id="tab-gen" onclick="switchTab('generator')">
+            自動生成モード
+        </button>
+        <button class="tab-btn" id="tab-sol" onclick="switchTab('solver')">
+            解法モード
+        </button>
     </div>
 
     <div id="generator" class="tab-content active">
-        <div class="info">指定サイズでパズルを自動作成します。</div>
-        <div class="controls">
-            <label>行: <input type="number" id="gen-rows" value="8" min="3" max="20"></label>
-            <label>列: <input type="number" id="gen-cols" value="8" min="3" max="20"></label>
-            <button class="btn-gen" onclick="runGenerator()">パズルを生成</button>
+        <div class="info">
+            指定サイズでパズルを自動作成します。
         </div>
+
+        <div class="mode-note">
+            「通常生成」は孤立空白ブロックなどの条件を重視します。<br>
+            「密集優先生成」は 2×2 / 2×3 / 3×2 / 3×3 の文字ブロックを優先して作成します。
+        </div>
+
+        <div class="controls">
+            <label>
+                行:
+                <input type="number" id="gen-rows" value="8" min="5" max="20">
+            </label>
+
+            <label>
+                列:
+                <input type="number" id="gen-cols" value="8" min="5" max="20">
+            </label>
+
+            <label>
+                生成タイプ:
+                <select id="generation-mode">
+                    <option value="normal">通常生成</option>
+                    <option value="dense">密集優先生成</option>
+                </select>
+            </label>
+
+            <button class="btn-gen" id="generate-button" onclick="runGenerator()">
+                パズルを生成
+            </button>
+        </div>
+
         <div id="gen-warning" class="warning"></div>
         <div id="gen-info" class="info"></div>
+        <div id="gen-dense-info"></div>
+
         <div class="grid-wrapper">
             <div id="gen-grid" class="grid"></div>
         </div>
     </div>
 
     <div id="solver" class="tab-content">
-        <div class="info">盤面をクリックして白マス（文字を入れる場所）を設定してください。</div>
-        <div class="controls">
-            <label>行: <input type="number" id="sol-rows" value="5" min="2" max="15" onchange="initSolverGrid()"></label>
-            <label>列: <input type="number" id="sol-cols" value="5" min="2" max="15" onchange="initSolverGrid()"></label>
-            <button class="btn-sol" onclick="runSolver()">解を探索</button>
-            <button class="btn-reset" onclick="initSolverGrid()">リセット</button>
+        <div class="info">
+            盤面をクリックして白マス、つまり文字を入れる場所を設定してください。
         </div>
+
+        <div class="controls">
+            <label>
+                行:
+                <input type="number" id="sol-rows" value="5" min="2" max="15" onchange="initSolverGrid()">
+            </label>
+
+            <label>
+                列:
+                <input type="number" id="sol-cols" value="5" min="2" max="15" onchange="initSolverGrid()">
+            </label>
+
+            <button class="btn-sol" onclick="runSolver()">
+                解を探索
+            </button>
+
+            <button class="btn-reset" onclick="initSolverGrid()">
+                リセット
+            </button>
+        </div>
+
         <div id="sol-warning" class="warning"></div>
         <div id="sol-info" class="info"></div>
-        
+
         <div class="grid-wrapper">
             <div id="sol-grid-editor" class="grid"></div>
         </div>
@@ -107,79 +374,215 @@
     let solverPattern = [];
 
     function switchTab(tabId) {
-        document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-        document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(el => {
+            el.classList.remove('active');
+        });
+
+        document.querySelectorAll('.tab-btn').forEach(el => {
+            el.classList.remove('active');
+        });
+
         document.getElementById(tabId).classList.add('active');
-        if(tabId === 'generator') document.getElementById('tab-gen').classList.add('active');
-        else {
+
+        if (tabId === 'generator') {
+            document.getElementById('tab-gen').classList.add('active');
+        } else {
             document.getElementById('tab-sol').classList.add('active');
-            if (solverPattern.length === 0) initSolverGrid();
+
+            if (solverPattern.length === 0) {
+                initSolverGrid();
+            }
         }
     }
 
     function renderGrid(containerId, gridData) {
         const container = document.getElementById(containerId);
         container.innerHTML = '';
-        if (!gridData || gridData.length === 0) return;
+
+        if (!gridData || gridData.length === 0) {
+            return;
+        }
+
         const rows = gridData.length;
         const cols = gridData[0].length;
+
         container.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+
         for (let r = 0; r < rows; r++) {
             for (let c = 0; c < cols; c++) {
                 const cellDiv = document.createElement('div');
                 const char = gridData[r][c];
+
                 cellDiv.className = 'cell';
-                if (char === '⬛︎' || char === ' ' || char === '' || char === 0) cellDiv.classList.add('black');
-                else cellDiv.textContent = char;
+
+                if (
+                    char === '⬛︎' ||
+                    char === '⬛' ||
+                    char === ' ' ||
+                    char === '' ||
+                    char === 0
+                ) {
+                    cellDiv.classList.add('black');
+                } else {
+                    cellDiv.textContent = char;
+                }
+
                 container.appendChild(cellDiv);
             }
         }
     }
 
+    function renderDenseInfo(denseInfo) {
+        const denseInfoContainer = document.getElementById('gen-dense-info');
+        denseInfoContainer.innerHTML = '';
+
+        if (!denseInfo) {
+            return;
+        }
+
+        const box = document.createElement('div');
+        box.className = 'dense-info-box';
+
+        box.innerHTML = `
+            <div class="dense-info-title">密集ブロック情報</div>
+            <div>2×2 ブロック: ${denseInfo.block2x2 ?? 0}</div>
+            <div>2×3 ブロック: ${denseInfo.block2x3 ?? 0}</div>
+            <div>3×2 ブロック: ${denseInfo.block3x2 ?? 0}</div>
+            <div>3×3 ブロック: ${denseInfo.block3x3 ?? 0}</div>
+            <div>密集スコア: ${denseInfo.score ?? 0}</div>
+        `;
+
+        denseInfoContainer.appendChild(box);
+    }
+
     async function runGenerator() {
-        const rows = document.getElementById('gen-rows').value;
-        const cols = document.getElementById('gen-cols').value;
+        const rows = parseInt(document.getElementById('gen-rows').value);
+        const cols = parseInt(document.getElementById('gen-cols').value);
         const listName = document.getElementById('dictionary-select').value;
-        document.getElementById('gen-warning').textContent = '';
-        document.getElementById('gen-info').textContent = '生成中...';
+        const generationMode = document.getElementById('generation-mode').value;
+
+        const warningEl = document.getElementById('gen-warning');
+        const infoEl = document.getElementById('gen-info');
+        const denseInfoEl = document.getElementById('gen-dense-info');
+        const button = document.getElementById('generate-button');
+
+        warningEl.textContent = '';
+        infoEl.textContent = '生成中...';
+        denseInfoEl.innerHTML = '';
+        renderGrid('gen-grid', []);
+
+        button.disabled = true;
+
+        const endpoint =
+            generationMode === 'dense'
+                ? '/generate-dense'
+                : '/generate';
+
         try {
-            const response = await fetch('/generate', {
+            const response = await fetch(endpoint, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ rows: parseInt(rows), cols: parseInt(cols), listName })
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    rows,
+                    cols,
+                    listName
+                })
             });
+
             const data = await response.json();
-            document.getElementById('gen-info').textContent = data.placedWords ? `配置成功: ${data.placedWords.length}語` : '';
+
+            if (!response.ok) {
+                warningEl.textContent = data.error || '生成に失敗しました。';
+                infoEl.textContent = '';
+                return;
+            }
+
+            if (data.warning) {
+                warningEl.textContent = data.warning;
+            }
+
+            const placedCount =
+                data.placedWords && Array.isArray(data.placedWords)
+                    ? data.placedWords.length
+                    : 0;
+
+            const modeLabel =
+                generationMode === 'dense'
+                    ? '密集優先生成'
+                    : '通常生成';
+
+            let infoText = `${modeLabel} / 配置成功: ${placedCount}語`;
+
+            if (data.listUsed) {
+                infoText += ` / 使用辞書: ${data.listUsed}`;
+            }
+
+            infoEl.textContent = infoText;
+
             renderGrid('gen-grid', data.grid);
-        } catch (err) { document.getElementById('gen-warning').textContent = 'エラーが発生しました。'; }
+
+            if (generationMode === 'dense') {
+                renderDenseInfo(data.denseInfo);
+            }
+
+        } catch (err) {
+            warningEl.textContent = 'サーバーとの接続エラーが発生しました。';
+            infoEl.textContent = '';
+        } finally {
+            button.disabled = false;
+        }
     }
 
     function initSolverGrid() {
         const rows = parseInt(document.getElementById('sol-rows').value);
         const cols = parseInt(document.getElementById('sol-cols').value);
+
         document.getElementById('solutions-list').style.display = 'none';
         document.getElementById('solutions-list').innerHTML = '';
         document.getElementById('sol-warning').textContent = '';
         document.getElementById('sol-info').textContent = '';
-        solverPattern = Array.from({ length: rows }, () => Array(cols).fill(0)); 
+
+        solverPattern = Array.from(
+            { length: rows },
+            () => Array(cols).fill(0)
+        );
+
         drawSolverPatternGrid();
     }
 
     function drawSolverPatternGrid() {
         const container = document.getElementById('sol-grid-editor');
         container.innerHTML = '';
+
+        if (!solverPattern || solverPattern.length === 0) {
+            return;
+        }
+
         const rows = solverPattern.length;
         const cols = solverPattern[0].length;
+
         container.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+
         for (let r = 0; r < rows; r++) {
             for (let c = 0; c < cols; c++) {
                 const cellDiv = document.createElement('div');
                 cellDiv.className = 'cell interactive';
-                if (solverPattern[r][c] === 0) cellDiv.classList.add('black');
+
+                if (solverPattern[r][c] === 0) {
+                    cellDiv.classList.add('black');
+                }
+
                 cellDiv.onclick = () => {
-                    solverPattern[r][c] = solverPattern[r][c] === 0 ? 1 : 0;
+                    solverPattern[r][c] =
+                        solverPattern[r][c] === 0
+                            ? 1
+                            : 0;
+
                     cellDiv.classList.toggle('black');
                 };
+
                 container.appendChild(cellDiv);
             }
         }
@@ -188,69 +591,107 @@
     async function runSolver() {
         const listName = document.getElementById('dictionary-select').value;
         const solListContainer = document.getElementById('solutions-list');
+
         document.getElementById('sol-warning').textContent = '';
         document.getElementById('sol-info').textContent = '探索中...';
+
         solListContainer.innerHTML = '';
         solListContainer.style.display = 'none';
 
         try {
             const response = await fetch('/solve', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ pattern: solverPattern, listName })
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    pattern: solverPattern,
+                    listName
+                })
             });
+
             const data = await response.json();
-            
+
             if (data.warning) {
                 document.getElementById('sol-warning').textContent = data.warning;
                 document.getElementById('sol-info').textContent = '';
-            } else if (data.solutions && data.solutions.length > 0) {
-                // 総数は配列全体の長さ
+                return;
+            }
+
+            if (data.solutions && data.solutions.length > 0) {
                 const totalCount = data.solutions.length;
                 const displayLimit = 10;
                 const displayCount = Math.min(totalCount, displayLimit);
-                
+
                 let message = `✅ 合計 ${totalCount} 件の解が見つかりました`;
+
                 if (totalCount > displayLimit) {
                     message += `（最初の ${displayLimit} 件を表示しています）`;
                 }
+
                 document.getElementById('sol-info').textContent = message;
                 solListContainer.style.display = 'block';
 
                 for (let i = 0; i < displayCount; i++) {
                     const sol = data.solutions[i];
+
                     const itemDiv = document.createElement('div');
                     itemDiv.className = 'solution-item';
+
                     const label = document.createElement('span');
                     label.className = 'solution-label';
                     label.textContent = `解決パターン #${i + 1}`;
+
                     itemDiv.appendChild(label);
 
                     const gridDiv = document.createElement('div');
                     gridDiv.className = 'grid';
                     gridDiv.style.gridTemplateColumns = `repeat(${sol[0].length}, 1fr)`;
+
                     for (let r = 0; r < sol.length; r++) {
                         for (let c = 0; c < sol[0].length; c++) {
                             const cell = document.createElement('div');
                             cell.className = 'cell';
-                            if (sol[r][c] === ' ' || sol[r][c] === '' || sol[r][c] === 0) cell.classList.add('black');
-                            else cell.textContent = sol[r][c];
+
+                            if (
+                                sol[r][c] === ' ' ||
+                                sol[r][c] === '' ||
+                                sol[r][c] === 0
+                            ) {
+                                cell.classList.add('black');
+                            } else {
+                                cell.textContent = sol[r][c];
+                            }
+
                             gridDiv.appendChild(cell);
                         }
                     }
+
                     itemDiv.appendChild(gridDiv);
                     solListContainer.appendChild(itemDiv);
                 }
-                setTimeout(() => { solListContainer.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 100);
+
+                setTimeout(() => {
+                    solListContainer.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }, 100);
+
             } else {
-                document.getElementById('sol-info').textContent = '解は見つかりませんでした。';
+                document.getElementById('sol-info').textContent =
+                    '解は見つかりませんでした。';
             }
+
         } catch (err) {
-            document.getElementById('sol-warning').textContent = 'サーバーとの接続エラーが発生しました。';
+            document.getElementById('sol-warning').textContent =
+                'サーバーとの接続エラーが発生しました。';
+            document.getElementById('sol-info').textContent = '';
         }
     }
 
     window.onload = initSolverGrid;
 </script>
+
 </body>
 </html>

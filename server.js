@@ -761,6 +761,382 @@ function generateCrossword(rows, cols, indexedWords, initialPlacedWords = []) {
 }
 
 // =========================================================
+// 2-B. 密集優先ジェネレーター
+// 2×2 / 2×3 / 3×2 / 3×3 の完全文字ブロックを優先
+// =========================================================
+
+function countFilledCells(grid) {
+    let count = 0;
+
+    for (let r = 0; r < grid.length; r++) {
+        for (let c = 0; c < grid[0].length; c++) {
+            if (grid[r][c] !== ' ') {
+                count++;
+            }
+        }
+    }
+
+    return count;
+}
+
+function countDenseBlocksDetailed(grid) {
+    const rows = grid.length;
+    const cols = grid[0].length;
+
+    const result = {
+        block2x2: 0,
+        block2x3: 0,
+        block3x2: 0,
+        block3x3: 0,
+        score: 0
+    };
+
+    function isFilledRect(r, c, h, w) {
+        for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+                if (grid[r + y][c + x] === ' ') {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    // 2×2
+    for (let r = 0; r <= rows - 2; r++) {
+        for (let c = 0; c <= cols - 2; c++) {
+            if (isFilledRect(r, c, 2, 2)) {
+                result.block2x2++;
+                result.score += 10;
+            }
+        }
+    }
+
+    // 2×3
+    for (let r = 0; r <= rows - 2; r++) {
+        for (let c = 0; c <= cols - 3; c++) {
+            if (isFilledRect(r, c, 2, 3)) {
+                result.block2x3++;
+                result.score += 35;
+            }
+        }
+    }
+
+    // 3×2
+    for (let r = 0; r <= rows - 3; r++) {
+        for (let c = 0; c <= cols - 2; c++) {
+            if (isFilledRect(r, c, 3, 2)) {
+                result.block3x2++;
+                result.score += 35;
+            }
+        }
+    }
+
+    // 3×3
+    for (let r = 0; r <= rows - 3; r++) {
+        for (let c = 0; c <= cols - 3; c++) {
+            if (isFilledRect(r, c, 3, 3)) {
+                result.block3x3++;
+                result.score += 120;
+            }
+        }
+    }
+
+    return result;
+}
+
+function calculateDenseModeScore(grid, placedWords) {
+    const dense = countDenseBlocksDetailed(grid);
+    const filledCells = countFilledCells(grid);
+    const emptyCells = grid.length * grid[0].length - filledCells;
+
+    // 密集モードでは 3×3 / 2×3 / 3×2 / 2×2 を最優先
+    const denseBlockBonus = dense.score * 10000000;
+
+    // 文字で埋まっているマスも強く評価
+    const filledBonus = filledCells * 100000;
+
+    // 単語数も評価。ただし密集ブロックよりは弱め
+    const wordBonus = placedWords.length * 50000;
+
+    // 空白は軽く減点
+    const emptyPenalty = emptyCells * 100;
+
+    return denseBlockBonus + filledBonus + wordBonus - emptyPenalty;
+}
+
+// 密集モード専用の配置関数
+// 通常モードと違い、横単語の上下・縦単語の左右の隣接を禁止しない
+function placeWordDense(grid, word, r, c, direction, isFirstWord) {
+    const rows = grid.length;
+    const cols = grid[0].length;
+    const length = word.length;
+
+    const newGrid = grid.map(row => [...row]);
+
+    let intersectionCount = 0;
+    let newCellCount = 0;
+
+    for (let i = 0; i < length; i++) {
+        const currentR = r + (direction === 'vertical' ? i : 0);
+        const currentC = c + (direction === 'horizontal' ? i : 0);
+
+        if (
+            currentR < 0 ||
+            currentR >= rows ||
+            currentC < 0 ||
+            currentC >= cols
+        ) {
+            return null;
+        }
+
+        const existingChar = newGrid[currentR][currentC];
+
+        if (existingChar !== ' ' && existingChar !== word[i]) {
+            return null;
+        }
+
+        if (existingChar === word[i]) {
+            intersectionCount++;
+        }
+
+        if (existingChar === ' ') {
+            newCellCount++;
+        }
+
+        newGrid[currentR][currentC] = word[i];
+    }
+
+    // 単語の直前・直後だけは通常モード同様にふさがない
+    // これを外すと単語同士が一直線に連結しすぎるため
+    const beforeR = r - (direction === 'vertical' ? 1 : 0);
+    const beforeC = c - (direction === 'horizontal' ? 1 : 0);
+    const afterR = r + (direction === 'vertical' ? length : 0);
+    const afterC = c + (direction === 'horizontal' ? length : 0);
+
+    if (
+        beforeR >= 0 &&
+        beforeR < rows &&
+        beforeC >= 0 &&
+        beforeC < cols &&
+        newGrid[beforeR][beforeC] !== ' '
+    ) {
+        return null;
+    }
+
+    if (
+        afterR >= 0 &&
+        afterR < rows &&
+        afterC >= 0 &&
+        afterC < cols &&
+        newGrid[afterR][afterC] !== ' '
+    ) {
+        return null;
+    }
+
+    // 2語目以降は、最低1文字は交差していることを要求
+    if (!isFirstWord && intersectionCount === 0) {
+        return null;
+    }
+
+    // 完全に既存マスだけをなぞる配置は無意味なので禁止
+    if (newCellCount === 0) {
+        return null;
+    }
+
+    return newGrid;
+}
+
+function generateDenseCrossword(rows, cols, indexedWords) {
+    const MAX_ATTEMPTS = 120000;
+
+    let attemptCount = 0;
+
+    const availableLengths = Object.keys(indexedWords)
+        .map(Number)
+        .filter(length => length <= Math.max(rows, cols))
+        .sort((a, b) => b - a);
+
+    let bestSolution = {
+        grid: createEmptyGrid(rows, cols),
+        placedWords: [],
+        score: 0,
+        densityScore: -Infinity,
+        denseInfo: null
+    };
+
+    const currentCandidates = {};
+
+    for (const length in indexedWords) {
+        currentCandidates[length] = shuffleArray([...indexedWords[length]]);
+    }
+
+    function findHookPoints(grid) {
+        const points = [];
+
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                if (grid[r][c] !== ' ') {
+                    points.push({
+                        r,
+                        c,
+                        char: grid[r][c]
+                    });
+                }
+            }
+        }
+
+        // 密集モードでは中心優先
+        const centerR = rows / 2;
+        const centerC = cols / 2;
+
+        return points.sort((a, b) => {
+            const da =
+                Math.pow(a.r - centerR, 2) +
+                Math.pow(a.c - centerC, 2);
+
+            const db =
+                Math.pow(b.r - centerR, 2) +
+                Math.pow(b.c - centerC, 2);
+
+            return da - db;
+        });
+    }
+
+    function updateBest(currentGrid, placedWords) {
+        const denseInfo = countDenseBlocksDetailed(currentGrid);
+        const currentScore = calculateDenseModeScore(currentGrid, placedWords);
+
+        if (currentScore > bestSolution.densityScore) {
+            bestSolution = {
+                grid: currentGrid.map(row => [...row]),
+                placedWords: [...placedWords],
+                score: placedWords.length,
+                densityScore: currentScore,
+                denseInfo
+            };
+        }
+    }
+
+    function backtrack(currentGrid, usedWords, placedWords) {
+        if (attemptCount++ > MAX_ATTEMPTS) {
+            return;
+        }
+
+        updateBest(currentGrid, placedWords);
+
+        const isCurrentlyEmpty = placedWords.length === 0;
+        const hookPoints = findHookPoints(currentGrid);
+
+        for (const length of availableLengths) {
+            const candidates = currentCandidates[length];
+
+            if (!candidates) continue;
+
+            for (const word of candidates) {
+                if (usedWords.has(word)) continue;
+
+                if (isCurrentlyEmpty) {
+                    const directions = shuffleArray(['horizontal', 'vertical']);
+
+                    for (const direction of directions) {
+                        const startR =
+                            direction === 'horizontal'
+                                ? Math.floor(rows / 2)
+                                : Math.floor(rows / 2 - word.length / 2);
+
+                        const startC =
+                            direction === 'horizontal'
+                                ? Math.floor(cols / 2 - word.length / 2)
+                                : Math.floor(cols / 2);
+
+                        const placedGrid = placeWordDense(
+                            currentGrid,
+                            word,
+                            startR,
+                            startC,
+                            direction,
+                            true
+                        );
+
+                        if (placedGrid) {
+                            usedWords.add(word);
+                            placedWords.push({
+                                word,
+                                r: startR,
+                                c: startC,
+                                direction
+                            });
+
+                            backtrack(placedGrid, usedWords, placedWords);
+
+                            usedWords.delete(word);
+                            placedWords.pop();
+                        }
+                    }
+                } else {
+                    for (const hookPoint of hookPoints) {
+                        for (let i = 0; i < word.length; i++) {
+                            if (word[i] !== hookPoint.char) continue;
+
+                            const directions = shuffleArray(['horizontal', 'vertical']);
+
+                            for (const direction of directions) {
+                                const startR =
+                                    direction === 'horizontal'
+                                        ? hookPoint.r
+                                        : hookPoint.r - i;
+
+                                const startC =
+                                    direction === 'horizontal'
+                                        ? hookPoint.c - i
+                                        : hookPoint.c;
+
+                                const placedGrid = placeWordDense(
+                                    currentGrid,
+                                    word,
+                                    startR,
+                                    startC,
+                                    direction,
+                                    false
+                                );
+
+                                if (placedGrid) {
+                                    usedWords.add(word);
+                                    placedWords.push({
+                                        word,
+                                        r: startR,
+                                        c: startC,
+                                        direction
+                                    });
+
+                                    backtrack(placedGrid, usedWords, placedWords);
+
+                                    usedWords.delete(word);
+                                    placedWords.pop();
+
+                                    // 完全探索しすぎると重いので、
+                                    // ある程度良い枝を見つけたら次へ進む
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    const initialGrid = createEmptyGrid(rows, cols);
+    const usedWords = new Set();
+    const placedWords = [];
+
+    backtrack(initialGrid, usedWords, placedWords);
+
+    return bestSolution;
+}
+// =========================================================
 // 3. ソルバー ロジック
 // =========================================================
 
@@ -1146,6 +1522,72 @@ app.post('/generate', (req, res) => {
         placedWords: resultToDisplay.placedWords,
         score: resultToDisplay.score,
         listUsed: displayName
+    });
+});
+
+// 密集優先 自動生成API
+app.post('/generate-dense', (req, res) => {
+    const { rows, cols, listName } = req.body;
+
+    if (
+        !rows ||
+        !cols ||
+        rows < 5 ||
+        cols < 5 ||
+        rows > 20 ||
+        cols > 20
+    ) {
+        return res.status(400).send({
+            error: '縦横のマス目の数は5から20の間で指定してください。'
+        });
+    }
+
+    const listUsedName =
+        listName in indexedWordLists
+            ? listName
+            : 'pokemon';
+
+    const currentWordList = indexedWordLists[listUsedName];
+
+    let bestResult = {
+        grid: createEmptyGrid(rows, cols),
+        placedWords: [],
+        score: 0,
+        densityScore: -Infinity,
+        denseInfo: null
+    };
+
+    const NUM_RESTARTS = 20;
+
+    for (let i = 0; i < NUM_RESTARTS; i++) {
+        const result = generateDenseCrossword(
+            rows,
+            cols,
+            currentWordList
+        );
+
+        if (result.densityScore > bestResult.densityScore) {
+            bestResult = result;
+        }
+    }
+
+    const finalGrid = bestResult.grid.map(row =>
+        row.map(cell => cell === ' ' ? '⬛︎' : cell)
+    );
+
+    const displayName =
+        listUsedName === "countries_capitals"
+            ? "国名・首都名"
+            : listUsedName;
+
+    res.json({
+        grid: finalGrid,
+        placedWords: bestResult.placedWords,
+        score: bestResult.score,
+        densityScore: bestResult.densityScore,
+        denseInfo: bestResult.denseInfo,
+        listUsed: displayName,
+        mode: "dense"
     });
 });
 
