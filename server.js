@@ -1,5 +1,5 @@
 ﻿// server.js
-// 統合版: 通常生成モード & 密集優先生成モード & パターン解法モード
+// 統合版: 通常生成モード & 密集優先生成モード & パターン解法モード(高速化版)
 
 const express = require('express');
 const fs = require('fs');
@@ -29,7 +29,8 @@ function normalizeWord(word) {
         normalizedWord += replacements[char] || char;
     }
 
-    return normalizedWord;
+    // カタカナと長音以外(♀ ♂ : . 数字 英字など)は除去
+    return normalizedWord.replace(/[^ァ-ヶー]/g, '');
 }
 
 function shuffleArray(array) {
@@ -54,35 +55,12 @@ let indexedWordLists = {};
 
 // ソルバー用
 const wordsByLengthSolver = {};
-const intersectionIndex = {};
+
+// ソルバー用: 長さ → 位置 → 文字 → ビットセット
+const solverIndex = {};
 
 // 密集生成用: フック文字ごとの単語インデックス
 const denseWordIndex = {};
-
-function buildIntersectionIndex(key) {
-    const listWordsByLength = wordsByLengthSolver[key];
-    const index = intersectionIndex[key];
-
-    for (const length in listWordsByLength) {
-        index[length] = {};
-
-        const words = listWordsByLength[length];
-
-        for (let pos = 0; pos < parseInt(length); pos++) {
-            index[length][pos] = {};
-
-            for (const word of words) {
-                const char = word[pos];
-
-                if (!index[length][pos][char]) {
-                    index[length][pos][char] = new Set();
-                }
-
-                index[length][pos][char].add(word);
-            }
-        }
-    }
-}
 
 function loadAndOptimizeWordLists() {
     console.log('単語リストを読み込み、最適化中...');
@@ -91,10 +69,8 @@ function loadAndOptimizeWordLists() {
         const fileList = filesMap[key];
 
         const uniqueWordsGen = new Set();
-        const uniqueNormWordsSolver = new Set();
 
         wordsByLengthSolver[key] = {};
-        intersectionIndex[key] = {};
 
         for (const file of fileList) {
             const filePath = path.join(__dirname, file);
@@ -118,7 +94,6 @@ function loadAndOptimizeWordLists() {
                         }
 
                         wordsByLengthSolver[key][normWord.length].add(normWord);
-                        uniqueNormWordsSolver.add(normWord);
                     }
                 }
             } catch (error) {
@@ -149,15 +124,12 @@ function loadAndOptimizeWordLists() {
             indexedWordLists[key] = indexed;
         }
 
-        // ソルバー用インデックス
+        // ソルバー用: Set → Array
         for (const length in wordsByLengthSolver[key]) {
             wordsByLengthSolver[key][length] = Array.from(wordsByLengthSolver[key][length]);
         }
 
-        if (uniqueNormWordsSolver.size > 0) {
-            buildIntersectionIndex(key);
-            console.log(`- リスト [${key}]: 登録完了`);
-        }
+        console.log(`- リスト [${key}]: 登録完了`);
     }
 }
 
@@ -189,8 +161,42 @@ function buildDenseWordIndex() {
     console.log('- 密集生成用インデックス構築完了');
 }
 
+function buildSolverIndex() {
+    for (const key in wordsByLengthSolver) {
+        solverIndex[key] = {};
+
+        for (const len in wordsByLengthSolver[key]) {
+            const words = wordsByLengthSolver[key][len];
+            const L = Number(len);
+            const nW = (words.length + 31) >>> 5;
+            const byPosChar = Array.from({ length: L }, () => new Map());
+            const full = new Uint32Array(nW);
+
+            words.forEach((w, idx) => {
+                full[idx >>> 5] |= (1 << (idx & 31));
+
+                for (let p = 0; p < L; p++) {
+                    let bs = byPosChar[p].get(w[p]);
+
+                    if (!bs) {
+                        bs = new Uint32Array(nW);
+                        byPosChar[p].set(w[p], bs);
+                    }
+
+                    bs[idx >>> 5] |= (1 << (idx & 31));
+                }
+            });
+
+            solverIndex[key][len] = { words, nW, byPosChar, full };
+        }
+    }
+
+    console.log('- ソルバー用ビットセットインデックス構築完了');
+}
+
 loadAndOptimizeWordLists();
 buildDenseWordIndex();
+buildSolverIndex();
 
 // =========================================================
 // 盤面ユーティリティ
@@ -1154,7 +1160,7 @@ function generateDenseCrossword(rows, cols, indexedWords, wordIndex) {
 }
 
 // =========================================================
-// 3. ソルバー
+// 3. ソルバー(ビットセット + 前向き検査 + MRV)
 // =========================================================
 
 function getWordSlots(pattern) {
@@ -1270,140 +1276,180 @@ function getWordSlots(pattern) {
     return wordSlots;
 }
 
-function solveCrossword(pattern, optimizedData, listUsedName) {
-    const { wordsByLength } = optimizedData;
+function popcnt(bs) {
+    let c = 0;
 
-    const wordSlots = getWordSlots(pattern);
-    const numSlots = wordSlots.length;
+    for (let i = 0; i < bs.length; i++) {
+        let v = bs[i];
+        v = v - ((v >>> 1) & 0x55555555);
+        v = (v & 0x33333333) + ((v >>> 2) & 0x33333333);
+        c += Math.imul((v + (v >>> 4)) & 0x0F0F0F0F, 0x01010101) >>> 24;
+    }
 
-    const assignments = Array(numSlots).fill(null);
-    const usedWordsSet = new Set();
-    const solutions = [];
+    return c;
+}
 
+function isEmptyBitset(bs) {
+    for (let i = 0; i < bs.length; i++) {
+        if (bs[i] !== 0) return false;
+    }
+
+    return true;
+}
+
+function solveCrossword(pattern, listUsedName, opts = {}) {
+    const maxSolutions = opts.maxSolutions ?? 200;
+    const timeLimitMs = opts.timeLimitMs ?? 5000;
+
+    const idx = solverIndex[listUsedName];
     const rows = pattern.length;
     const cols = pattern[0].length;
+    const slots = getWordSlots(pattern);
+    const n = slots.length;
 
-    const grid = Array.from({ length: rows }, () => Array(cols).fill(''));
+    const solutions = [];
+    let truncated = false;
 
-    function getCandidates(slot) {
-        const candidates = [];
-        const lengthWords = wordsByLength[listUsedName][slot.length] || [];
+    if (n === 0) return { solutions, truncated };
 
-        for (const word of lengthWords) {
-            if (usedWordsSet.has(word)) continue;
+    const info = slots.map(s => idx[s.length]);
 
-            let ok = true;
+    // 辞書に存在しない長さのスロットがあれば解なし
+    if (info.some(x => !x)) return { solutions, truncated };
 
-            if (slot.direction === 'horizontal') {
-                for (let i = 0; i < slot.length; i++) {
-                    const cell = grid[slot.position.r][slot.position.c + i];
+    // 深さごとに候補集合を保持(再帰中に new しない)
+    const domains = Array.from({ length: n + 1 }, () =>
+        info.map(inf => new Uint32Array(inf.nW))
+    );
 
-                    if (cell !== '' && cell !== word[i]) {
-                        ok = false;
-                        break;
-                    }
-                }
-            } else {
-                for (let i = 0; i < slot.length; i++) {
-                    const cell = grid[slot.position.r + i][slot.position.c];
+    for (let i = 0; i < n; i++) {
+        domains[0][i].set(info[i].full);
+    }
 
-                    if (cell !== '' && cell !== word[i]) {
-                        ok = false;
-                        break;
-                    }
-                }
-            }
+    const assigned = new Int32Array(n).fill(-1);
+    const done = new Uint8Array(n);
+    const deadline = Date.now() + timeLimitMs;
+    let nodes = 0;
 
-            if (ok) {
-                candidates.push(word);
+    function recordSolution() {
+        const grid = Array.from({ length: rows }, () => Array(cols).fill(' '));
+
+        for (let i = 0; i < n; i++) {
+            const s = slots[i];
+            const word = info[i].words[assigned[i]];
+
+            for (let k = 0; k < s.length; k++) {
+                const r = s.position.r + (s.direction === 'vertical' ? k : 0);
+                const c = s.position.c + (s.direction === 'horizontal' ? k : 0);
+                grid[r][c] = word[k];
             }
         }
 
-        return candidates;
+        solutions.push(grid);
+
+        if (solutions.length >= maxSolutions) truncated = true;
     }
 
-    function selectSlotMCV() {
+    function dfs(depth) {
+        if (truncated) return;
+
+        if ((++nodes & 1023) === 0 && Date.now() > deadline) {
+            truncated = true;
+            return;
+        }
+
+        const cur = domains[depth];
+
+        // MRV: 候補が最小のスロットを選ぶ
         let best = -1;
-        let bestCount = Infinity;
+        let bestCnt = Infinity;
 
-        for (let i = 0; i < numSlots; i++) {
-            if (assignments[i] !== null) continue;
+        for (let i = 0; i < n; i++) {
+            if (done[i]) continue;
 
-            const slot = wordSlots[i];
-            const count = getCandidates(slot).length;
+            const c = popcnt(cur[i]);
 
-            if (count < bestCount) {
-                bestCount = count;
+            if (c === 0) return;
+
+            if (c < bestCnt) {
+                bestCnt = c;
                 best = i;
             }
         }
 
-        return best;
-    }
-
-    function placeSolverWord(slot, word) {
-        const changes = [];
-
-        if (slot.direction === 'horizontal') {
-            for (let i = 0; i < slot.length; i++) {
-                const r = slot.position.r;
-                const c = slot.position.c + i;
-
-                if (grid[r][c] === '') {
-                    grid[r][c] = word[i];
-                    changes.push([r, c]);
-                }
-            }
-        } else {
-            for (let i = 0; i < slot.length; i++) {
-                const r = slot.position.r + i;
-                const c = slot.position.c;
-
-                if (grid[r][c] === '') {
-                    grid[r][c] = word[i];
-                    changes.push([r, c]);
-                }
-            }
-        }
-
-        return changes;
-    }
-
-    function undoChanges(changes) {
-        for (const [r, c] of changes) {
-            grid[r][c] = '';
-        }
-    }
-
-    function backtrack() {
-        const slotIndex = selectSlotMCV();
-
-        if (slotIndex === -1) {
-            solutions.push(grid.map(row => [...row]));
+        if (best === -1) {
+            recordSolution();
             return;
         }
 
-        const slot = wordSlots[slotIndex];
-        const candidates = getCandidates(slot);
+        const slot = slots[best];
+        const dom = cur[best];
+        const inf = info[best];
+        const next = domains[depth + 1];
 
-        for (const word of candidates) {
-            const changes = placeSolverWord(slot, word);
+        done[best] = 1;
 
-            assignments[slotIndex] = word;
-            usedWordsSet.add(word);
+        for (let b = 0; b < dom.length && !truncated; b++) {
+            let v = dom[b];
 
-            backtrack();
+            while (v !== 0 && !truncated) {
+                const low = v & -v;
+                const wi = (b << 5) + (31 - Math.clz32(low));
+                v ^= low;
 
-            assignments[slotIndex] = null;
-            usedWordsSet.delete(word);
+                const word = inf.words[wi];
 
-            undoChanges(changes);
+                for (let k = 0; k < n; k++) next[k].set(cur[k]);
+
+                let ok = true;
+
+                // 交差スロットを絞り込む(前向き検査)
+                for (const x of slot.intersections) {
+                    const o = x.otherSlotIndex;
+
+                    if (done[o]) continue;
+
+                    const m = info[o].byPosChar[x.otherPos].get(word[x.thisPos]);
+
+                    if (!m) { ok = false; break; }
+
+                    const d = next[o];
+                    let any = 0;
+
+                    for (let t = 0; t < d.length; t++) {
+                        d[t] &= m[t];
+                        any |= d[t];
+                    }
+
+                    if (any === 0) { ok = false; break; }
+                }
+
+                // 同じ単語を重複して使わない
+                if (ok) {
+                    for (let o = 0; o < n; o++) {
+                        if (done[o] || o === best || slots[o].length !== slot.length) continue;
+
+                        const d = next[o];
+                        d[wi >>> 5] &= ~(1 << (wi & 31));
+
+                        if (isEmptyBitset(d)) { ok = false; break; }
+                    }
+                }
+
+                if (!ok) continue;
+
+                assigned[best] = wi;
+                dfs(depth + 1);
+                assigned[best] = -1;
+            }
         }
+
+        done[best] = 0;
     }
 
-    backtrack();
+    dfs(0);
 
-    return solutions;
+    return { solutions, truncated };
 }
 
 // =========================================================
@@ -1428,7 +1474,7 @@ app.post('/generate', (req, res) => {
     }
 
     const listUsedName =
-        listName in indexedWordLists
+        Object.hasOwn(indexedWordLists, listName)
             ? listName
             : 'pokemon';
 
@@ -1550,7 +1596,7 @@ app.post('/generate-dense', (req, res) => {
     }
 
     const listUsedName =
-        listName in indexedWordLists
+        Object.hasOwn(indexedWordLists, listName)
             ? listName
             : 'pokemon';
 
@@ -1595,40 +1641,42 @@ app.post('/generate-dense', (req, res) => {
 app.post('/solve', (req, res) => {
     const { pattern, listName } = req.body;
 
-    if (!pattern || !Array.isArray(pattern)) {
-        return res.status(400).send({
-            error: '無効なパターンデータです。'
-        });
+    const valid =
+        Array.isArray(pattern) &&
+        pattern.length >= 2 && pattern.length <= 15 &&
+        pattern.every(row =>
+            Array.isArray(row) &&
+            row.length === pattern[0].length &&
+            row.length >= 2 && row.length <= 15 &&
+            row.every(v => v === 0 || v === 1)
+        );
+
+    if (!valid) {
+        return res.status(400).send({ error: '無効なパターンデータです。' });
     }
 
     const listUsedName =
-        listName in wordsByLengthSolver
+        Object.hasOwn(solverIndex, listName)
             ? listName
             : 'pokemon';
 
-    const optimizedData = {
-        wordsByLength: wordsByLengthSolver,
-        intersectionIndex
-    };
-
-    const solutions =
-        solveCrossword(pattern, optimizedData, listUsedName);
+    const { solutions, truncated } = solveCrossword(pattern, listUsedName, {
+        maxSolutions: 200,
+        timeLimitMs: 5000
+    });
 
     if (solutions.length === 0) {
         return res.json({
             solutions: [],
-            warning: '解が見つかりませんでした。パターンや辞書を変えてみてください。'
+            warning: truncated
+                ? '制限時間内に解が見つかりませんでした。パターンを簡単にしてみてください。'
+                : '解が見つかりませんでした。パターンや辞書を変えてみてください。'
         });
     }
 
-    const formattedSolutions = solutions.map(sol =>
-        sol.map(row =>
-            row.map(cell => cell === '' ? ' ' : cell)
-        )
-    );
-
     res.json({
-        solutions: formattedSolutions,
+        solutions,
+        truncated,
         listUsed: displayListName(listUsedName)
     });
 });
